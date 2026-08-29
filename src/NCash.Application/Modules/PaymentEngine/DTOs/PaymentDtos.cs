@@ -92,4 +92,9 @@ public record TransactionDetailDto(
     List<TransactionEventDto> Timeline,
     List<RiskSignalDto> RiskSignals,
     List<LedgerEntrySummaryDto> LedgerEntries,
-    ReconciliationSummaryDto Reconciliation);
+    ReconciliationSummaryDto Reconciliation)
+{
+    public string RecipientUsername => ReceiverUsername;
+    public string RecipientAccountNumber => ReceiverAccountNumber;
+    public DateTime CreatedAt => CreatedAtUtc;
+}

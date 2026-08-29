@@ -46,25 +46,29 @@ function fmtDate(d) {
 }
 
 function statusBadge(st) {
+    if (!st) return '<span class="badge badge-neutral">—</span>';
+    const norm = String(st).toUpperCase().replace(/\s+/g, '_');
     const m = {
-        'COMPLETED':     ['badge-success', '✓ Completed'],
+        'COMPLETED':            ['badge-success', '✓ Completed'],
+        'SUCCEEDED':            ['badge-success', '✓ Succeeded'],
         'COMPLETED_IDEMPOTENT': ['badge-success', '♻ Deduplicated'],
-        'PROCESSING':    ['badge-warning', '⏳ Processing'],
-        'FAILED':        ['badge-danger',  '✗ Failed'],
-        'ROLLED_BACK':   ['badge-danger',  '↩ Rolled Back'],
-        'UNKNOWN':       ['badge-neutral', '? Unknown'],
-        'PENDING':       ['badge-warning', '⏳ Pending'],
-        'PARTIALLY_PAID':['badge-warning', '≈ Partial'],
-        'PAID':          ['badge-success', '✓ Paid'],
-        'REJECTED':      ['badge-danger',  '✗ Rejected'],
-        'CANCELLED':     ['badge-neutral', '✗ Cancelled'],
-        'ACTIVE':        ['badge-info',    '● Active'],
-        'OPEN':          ['badge-info',    '● Open'],
-        'UNDER_INVESTIGATION': ['badge-warning', '🔍 Investigating'],
-        'RESOLVED':      ['badge-success', '✓ Resolved'],
-        'CLOSED':        ['badge-neutral', 'Closed'],
+        'PROCESSING':           ['badge-warning', '⏳ Processing'],
+        'FAILED':               ['badge-danger',  '✗ Failed'],
+        'ROLLED_BACK':          ['badge-danger',  '↩ Rolled Back'],
+        'UNKNOWN':              ['badge-neutral', '? Unknown'],
+        'PENDING':              ['badge-warning', '⏳ Pending'],
+        'PARTIALLYPAID':        ['badge-warning', '≈ Partial'],
+        'PARTIALLY_PAID':       ['badge-warning', '≈ Partial'],
+        'PAID':                 ['badge-success', '✓ Paid'],
+        'REJECTED':             ['badge-danger',  '✗ Rejected'],
+        'CANCELLED':            ['badge-neutral', '✗ Cancelled'],
+        'ACTIVE':               ['badge-info',    '● Active'],
+        'OPEN':                 ['badge-info',    '● Open'],
+        'UNDER_INVESTIGATION':  ['badge-warning', '🔍 Investigating'],
+        'RESOLVED':             ['badge-success', '✓ Resolved'],
+        'CLOSED':               ['badge-neutral', 'Closed'],
     };
-    const [cls, label] = m[st] || ['badge-neutral', st];
+    const [cls, label] = m[norm] || ['badge-neutral', st];
     return `<span class="badge ${cls}">${label}</span>`;
 }
 
@@ -72,6 +76,31 @@ function riskBadge(score) {
     if (score <= 30)  return `<span class="badge badge-success">Score: ${score} (LOW)</span>`;
     if (score <= 60)  return `<span class="badge badge-warning">Score: ${score} (MEDIUM)</span>`;
     return `<span class="badge badge-danger">Score: ${score} (HIGH)</span>`;
+}
+
+function getTransactionMeta(t) {
+    const myUser = (currentUser?.username || '').toLowerCase();
+    const myAcc  = (currentUser?.accountNumber || '').toUpperCase();
+
+    const senderUser   = (t.senderUsername || '').toLowerCase();
+    const senderAcc    = (t.senderAccountNumber || '').toUpperCase();
+    const receiverUser = (t.receiverUsername || t.recipientUsername || '').toLowerCase();
+    const receiverAcc  = (t.receiverAccountNumber || t.recipientAccountNumber || '').toUpperCase();
+
+    const isDebit = (senderUser && senderUser === myUser) || (senderAcc && senderAcc === myAcc);
+    const counterparty = isDebit
+        ? (t.receiverUsername || t.recipientUsername || t.receiverAccountNumber || 'Recipient')
+        : (t.senderUsername || t.senderAccountNumber || 'System Vault');
+
+    const dateVal = t.createdAtUtc || t.createdAt;
+
+    return {
+        isDebit,
+        counterparty,
+        dateVal,
+        amountSign: isDebit ? '− ' : '+ ',
+        amountClass: isDebit ? 'amt-out' : 'amt-in'
+    };
 }
 
 function showAlert(id, msg) {
@@ -131,6 +160,16 @@ async function apiRequest(endpoint, method = 'GET', body = null, extraHeaders = 
    ============================================================ */
 document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('hashchange', handleRoute);
+    document.addEventListener('click', (e) => {
+        const notifDropdown = document.getElementById('notif-dropdown');
+        const notifBtn = document.getElementById('btn-notif');
+        if (notifDropdown && notifDropdown.classList.contains('show')) {
+            if (!notifDropdown.contains(e.target) && !notifBtn.contains(e.target)) {
+                notifDropdown.classList.remove('show');
+            }
+        }
+    });
+
     if (authToken) {
         bootstrapUser();
     } else {
@@ -185,6 +224,10 @@ async function bootstrapUser() {
         currentUser = res.data;
         showAppShell();
         handleRoute();
+        loadNotifications();
+        if (!window.notifInterval) {
+            window.notifInterval = setInterval(loadNotifications, 12000);
+        }
     } catch {
         handleLogout();
     }
@@ -313,20 +356,26 @@ async function loadDashboard() {
     // Pending incoming requests
     try {
         const reqs = await apiRequest('/requests/incoming');
-        const list  = (reqs.data || []).filter(r => r.status === 'PENDING').slice(0, 4);
+        const list  = (reqs.data || []).filter(r => {
+            const st = (r.status || '').toUpperCase();
+            return st === 'PENDING' || st === 'PARTIALLYPAID' || st === 'PARTIALLY_PAID';
+        }).slice(0, 4);
         const el    = document.getElementById('dash-pending');
-        el.innerHTML = list.length ? list.map(r => `
+        el.innerHTML = list.length ? list.map(r => {
+            const reqName = r.requesterName || r.requesterUsername || r.requesterAccountNumber || 'Peer';
+            return `
             <div class="req-row">
                 <div>
-                    <div class="font-bold" style="font-size:13px;">${r.requesterUsername || '—'} <span class="text-muted font-sm">asks</span></div>
+                    <div class="font-bold" style="font-size:13px;">${reqName} <span class="text-muted font-sm">asks</span></div>
                     <div style="font-size:13px;font-weight:700;color:var(--primary);">${fmtBDT(r.remainingAmount)}</div>
                     <div class="font-xs text-muted">${r.note || ''}</div>
                 </div>
                 <div class="req-row-actions">
                     ${statusBadge(r.status)}
-                    <button class="btn btn-primary btn-xs" onclick="openPayReqModal('${r.id}','${r.remainingAmount}','${r.requesterUsername}')">Pay</button>
+                    <button class="btn btn-primary btn-xs" onclick="openPayReqModal('${r.id}','${r.remainingAmount}','${reqName}')">Pay</button>
                 </div>
-            </div>`).join('')
+            </div>`;
+        }).join('')
             : `<div class="empty-state">No pending requests 🎉</div>`;
     } catch { document.getElementById('dash-pending').innerHTML = `<div class="empty-state">Could not load requests.</div>`; }
 
@@ -336,14 +385,14 @@ async function loadDashboard() {
         const el   = document.getElementById('dash-recent');
         const list = txns.data || [];
         el.innerHTML = list.length ? list.map(t => {
-            const isOut = t.senderUserId === currentUser?.id;
+            const meta = getTransactionMeta(t);
             return `
             <div class="req-row">
                 <div>
-                    <div class="font-bold" style="font-size:13px;">${isOut ? t.recipientUsername : t.senderUsername} • <span class="text-muted font-sm">${t.purpose || ''}</span></div>
-                    <div class="font-xs text-muted">${fmtDate(t.createdAt)}</div>
+                    <div class="font-bold" style="font-size:13px;">${meta.counterparty} • <span class="text-muted font-sm">${t.purpose || 'Direct safe send'}</span></div>
+                    <div class="font-xs text-muted">${fmtDate(meta.dateVal)}</div>
                 </div>
-                <div class="${isOut ? 'amt-out' : 'amt-in'}">${isOut ? '−' : '+'}${fmtBDT(t.amount)}</div>
+                <div class="${meta.amountClass}">${meta.amountSign}${fmtBDT(t.amount)}</div>
             </div>`;
         }).join('')
             : `<div class="empty-state">No transactions yet.</div>`;
@@ -515,7 +564,9 @@ async function executeSend() {
         document.getElementById('success-msg').textContent =
             `${fmtBDT(sendState.amount)} sent to ${sendState.recipientDisplay || recipientTarget}. Key: ${sendState.idempotencyKey.slice(0, 8)}...`;
 
+        showToast('Transfer Succeeded', `Sent ${fmtBDT(sendState.amount)} to ${sendState.recipientDisplay || recipientTarget}`, 'success');
         openModal('modal-success');
+        loadNotifications();
     } catch (err) {
         showAlert('send-alert', err.message);
     } finally {
@@ -553,15 +604,21 @@ async function loadRequests() {
 }
 
 function renderRequestRow(r) {
-    const isIncoming = currentTab === 'incoming';
-    const canPay     = isIncoming && (r.status === 'PENDING' || r.status === 'PARTIALLY_PAID');
-    const canCancel  = !isIncoming && r.status === 'PENDING';
+    const isIncoming  = currentTab === 'incoming';
+    const statusUpper = (r.status || '').toUpperCase().replace(/\s+/g, '_');
+    const canPay      = isIncoming && (statusUpper === 'PENDING' || statusUpper === 'PARTIALLYPAID' || statusUpper === 'PARTIALLY_PAID');
+    const canCancel   = !isIncoming && statusUpper === 'PENDING';
+    const displayName = isIncoming 
+        ? (r.requesterName || r.requesterUsername || r.requesterAccountNumber || 'Peer Requester')
+        : (r.payerName || r.payerUsername || r.payerAccountNumber || 'Peer Payer');
+    const dateVal = r.createdAtUtc || r.createdAt;
+
     return `
     <div class="req-row">
         <div>
-            <div class="font-bold" style="font-size:13px;">${isIncoming ? r.requesterUsername : r.payerUsername}</div>
-            <div style="font-size:12px;color:var(--text-body);">${r.note || '—'}</div>
-            <div class="font-xs text-muted">${fmtDate(r.createdAt)}</div>
+            <div class="font-bold" style="font-size:14px;color:var(--primary);">${displayName}</div>
+            <div style="font-size:12px;color:var(--text-body);margin-top:2px;">${r.note || '—'}</div>
+            <div class="font-xs text-muted" style="margin-top:3px;">${fmtDate(dateVal)}</div>
         </div>
         <div style="text-align:right;">
             <div style="font-size:16px;font-weight:700;color:var(--primary);">${fmtBDT(r.amount)}</div>
@@ -569,14 +626,12 @@ function renderRequestRow(r) {
         </div>
         <div class="req-row-actions">
             ${statusBadge(r.status)}
-            ${canPay    ? `<button class="btn btn-primary btn-xs" onclick="openPayReqModal('${r.id}','${r.remainingAmount}','${r.requesterUsername}')">Pay</button>` : ''}
-            ${canCancel ? `<button class="btn btn-danger btn-xs" onclick="cancelRequest('${r.id}')">Cancel</button>` : ''}
+            ${canPay    ? `<button class="btn btn-primary btn-sm" onclick="openPayReqModal('${r.id}','${r.remainingAmount}','${displayName}')">Pay Now</button>` : ''}
+            ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="cancelRequest('${r.id}')">Cancel</button>` : ''}
         </div>
     </div>`;
 }
 
-// Create request: POST /api/requests
-async function submitCreateRequest(e) {
 // Create request: POST /api/requests
 async function submitCreateRequest(e) {
     e.preventDefault();
@@ -615,7 +670,9 @@ async function submitCreateRequest(e) {
         document.getElementById('req-payer').value  = '';
         document.getElementById('req-amount').value = '';
         document.getElementById('req-note').value   = '';
+        showToast('Request Created', `Requested ${fmtBDT(amount)} from ${payerInput}`, 'info');
         loadRequests();
+        loadNotifications();
     } catch (err) {
         alert(err.message);
     }
@@ -648,8 +705,10 @@ async function submitPayRequest(e) {
             idempotencyKey: idKey
         }, { 'Idempotency-Key': idKey });
         closeModal('modal-pay-req');
+        showToast('Payment Complete', `Paid ${fmtBDT(amount)} on money request`, 'success');
         loadRequests();
         loadDashboard();
+        loadNotifications();
     } catch (err) {
         alert(err.message);
     }
@@ -680,51 +739,159 @@ async function loadGroups() {
 }
 
 function renderGroupCard(g) {
-    const pct     = g.targetAmount > 0 ? Math.min(100, (g.collectedAmount / g.targetAmount) * 100) : 0;
-    const members = (g.members || []).length;
+    const pct         = g.targetAmount > 0 ? Math.min(100, (g.collectedAmount / g.targetAmount) * 100) : 0;
+    const members     = g.members || [];
+    const isCreator   = g.creatorUserId === currentUser?.id;
+    const myMember    = members.find(m => m.userId === currentUser?.id);
+    const statusUpper = (g.status || '').toUpperCase();
+    const isActive    = statusUpper === 'PENDING' || statusUpper === 'PARTIALLYPAID' || statusUpper === 'PARTIALLY_PAID' || statusUpper === 'ACTIVE';
+
+    const myRemaining = myMember ? myMember.remainingAmount : 0;
+    const canContribute = isActive && (myMember ? ((myMember.status || '').toUpperCase() !== 'PAID') : (!isCreator));
+    const canCancel   = isCreator && isActive;
+
+    const membersHtml = members.length > 0 ? `
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border-subtle);">
+            <div class="font-xs font-bold text-muted mb-8" style="text-transform:uppercase;letter-spacing:.5px;">Member Breakdown (${members.length})</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                ${members.map(m => {
+                    const isMe = m.userId === currentUser?.id;
+                    return `
+                    <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;">
+                        <span style="color:var(--text-heading);font-weight:${isMe ? '700' : '500'};">
+                            ${m.fullName || m.username || m.accountNumber} ${isMe ? '<span class="badge badge-info" style="padding:1px 6px;font-size:10px;">You</span>' : ''}
+                        </span>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="color:var(--text-body);">${fmtBDT(m.paidAmount)} / ${fmtBDT(m.requiredAmount)}</span>
+                            ${statusBadge(m.status)}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>` : '';
+
     return `
-    <div class="card">
-        <div class="flex-between mb-8">
-            <div class="card-title" style="font-size:16px;">${g.title}</div>
-            ${statusBadge(g.status)}
+    <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;">
+        <div>
+            <div class="flex-between mb-8">
+                <div>
+                    <div class="card-title" style="font-size:16px;">${g.title}</div>
+                    <div class="font-xs text-muted">Created by ${isCreator ? 'You' : (g.creatorUsername || 'Peer')} • ${fmtDate(g.createdAtUtc || g.createdAt)}</div>
+                </div>
+                ${statusBadge(g.status)}
+            </div>
+            <div class="font-sm text-body mb-16">${g.description || ''}</div>
+            <div class="flex-between mb-4">
+                <span class="font-xs text-muted">Progress</span>
+                <span class="font-bold text-primary">${fmtBDT(g.collectedAmount)} / ${fmtBDT(g.targetAmount)}</span>
+            </div>
+            <div class="progress-bar-outer"><div class="progress-bar-inner" style="width:${pct.toFixed(1)}%;"></div></div>
+            <div class="flex-between font-xs text-muted mt-4 mb-16">
+                <span>${pct.toFixed(0)}% funded</span>
+                <span>Remaining: ${fmtBDT(g.remainingAmount)}</span>
+            </div>
+            ${membersHtml}
         </div>
-        <div class="font-sm text-body mb-16">${g.description || ''}</div>
-        <div class="flex-between mb-4">
-            <span class="font-xs text-muted">Collected</span>
-            <span class="font-bold text-primary">${fmtBDT(g.collectedAmount)} / ${fmtBDT(g.targetAmount)}</span>
-        </div>
-        <div class="progress-bar-outer"><div class="progress-bar-inner" style="width:${pct.toFixed(1)}%;"></div></div>
-        <div class="font-xs text-muted mt-4 mb-16">${pct.toFixed(0)}% funded · ${members} member${members !== 1 ? 's' : ''}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            ${g.status === 'ACTIVE' ? `<button class="btn btn-primary btn-sm" onclick="openPayGroupModal('${g.id}')">Contribute</button>` : ''}
-            ${g.status === 'ACTIVE' ? `<button class="btn btn-outline btn-sm" onclick="cancelGroup('${g.id}')">Cancel</button>` : ''}
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;padding-top:12px;border-top:1px solid var(--border-subtle);">
+            ${canContribute ? `
+                <button class="btn btn-primary btn-sm" onclick="openPayGroupModal('${g.id}', ${myRemaining || 100}, '${g.title.replace(/'/g, "\\'")}')">
+                    ${myMember ? `Pay My Share (${fmtBDT(myRemaining)})` : 'Contribute Funds'}
+                </button>` : ''}
+            ${canCancel ? `
+                <button class="btn btn-danger btn-sm" onclick="cancelGroup('${g.id}')">
+                    Cancel Collection
+                </button>` : ''}
         </div>
     </div>`;
 }
 
+function openPayGroupModal(groupId, suggestedAmount, groupTitle) {
+    document.getElementById('pay-grp-id').value = groupId;
+    const amountVal = (parseFloat(suggestedAmount) > 0 ? parseFloat(suggestedAmount) : 100).toFixed(2);
+    document.getElementById('pay-grp-amount').value = amountVal;
+    document.getElementById('pay-grp-details').innerHTML = `
+        <div class="review-row"><span class="review-key">Collection</span><span class="review-val">${groupTitle || 'Group Collection'}</span></div>
+        <div class="review-row"><span class="review-key">Assigned Contribution</span><span class="review-val">${fmtBDT(suggestedAmount || 100)}</span></div>`;
+    openModal('modal-pay-group');
+}
+
+async function submitPayGroup(e) {
+    e.preventDefault();
+    const groupId = document.getElementById('pay-grp-id').value;
+    const amount  = parseFloat(document.getElementById('pay-grp-amount').value);
+    if (!amount || amount <= 0) {
+        alert('Please enter a valid amount.');
+        return;
+    }
+
+    const idKey = generateUUID();
+    try {
+        await apiRequest(`/groups/${groupId}/pay`, 'POST', {
+            amount:         amount,
+            idempotencyKey: idKey
+        }, { 'Idempotency-Key': idKey });
+
+        closeModal('modal-pay-group');
+        showToast('Contribution Successful', `Contributed ${fmtBDT(amount)} to group pool`, 'success');
+        loadGroups();
+        loadDashboard();
+        loadNotifications();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
 async function submitCreateGroup(e) {
     e.preventDefault();
+    const title       = document.getElementById('grp-title').value.trim();
+    const descInput   = document.getElementById('grp-desc') ? document.getElementById('grp-desc').value.trim() : '';
+    const description = descInput || title;
+    const targetAmount= parseFloat(document.getElementById('grp-target').value);
     const memberNames = document.getElementById('grp-members').value.split(',').map(s => s.trim()).filter(Boolean);
-    let   memberIds   = [];
 
+    if (!title) {
+        alert('Please enter a collection title.');
+        return;
+    }
+    if (!targetAmount || targetAmount <= 0) {
+        alert('Please enter a valid target amount.');
+        return;
+    }
+
+    const members = [];
     for (const name of memberNames) {
+        let accNum = name;
         try {
             const lu = await apiRequest(`/users/search?q=${encodeURIComponent(name)}`);
-            memberIds.push({ userId: lu.data.id, targetContribution: null });
-        } catch { /* skip unresolved */ }
+            if (lu.data) {
+                accNum = lu.data.accountNumber || lu.data.username || name;
+            }
+        } catch { /* proceed with raw text */ }
+
+        members.push({
+            memberAccountNumber: accNum,
+            memberId:            accNum,
+            requiredAmount:      0
+        });
     }
 
     try {
         await apiRequest('/groups', 'POST', {
-            title:        document.getElementById('grp-title').value.trim(),
-            targetAmount: parseFloat(document.getElementById('grp-target').value),
-            members:      memberIds
+            title:          title,
+            description:    description,
+            targetAmount:   targetAmount,
+            initialMembers: members,
+            members:        members
         });
         closeModal('modal-create-group');
         document.getElementById('grp-title').value   = '';
+        if (document.getElementById('grp-desc')) document.getElementById('grp-desc').value = '';
         document.getElementById('grp-target').value  = '';
         document.getElementById('grp-members').value = '';
+        showToast('Collection Launched', `Group Pool "${title}" created for ${fmtBDT(targetAmount)}`, 'success');
         loadGroups();
+        loadNotifications();
     } catch (err) { alert(err.message); }
 }
 
@@ -735,7 +902,12 @@ function openPayGroupModal(groupId) {
     apiRequest(`/groups/${groupId}/pay`, 'POST', {
         amount, idempotencyKey: idKey
     }, { 'Idempotency-Key': idKey })
-        .then(() => { alert('Contribution submitted!'); loadGroups(); loadDashboard(); })
+        .then(() => {
+            showToast('Contribution Successful', `Contributed ${fmtBDT(amount)} to group pool`, 'success');
+            loadGroups();
+            loadDashboard();
+            loadNotifications();
+        })
         .catch(err => alert(err.message));
 }
 
@@ -771,15 +943,15 @@ async function loadActivity(page = 1) {
         document.getElementById('btn-next').disabled = list.length < 15;
 
         tbody.innerHTML = list.map(t => {
-            const isOut = t.senderUserId === currentUser?.id;
+            const meta = getTransactionMeta(t);
             return `
             <tr>
                 <td><span class="mono-id">${t.transactionNumber || t.id?.slice(0, 12) + '...'}</span></td>
-                <td class="font-sm">${fmtDate(t.createdAt)}</td>
-                <td class="font-bold">${isOut ? t.recipientUsername : t.senderUsername}</td>
+                <td class="font-sm">${fmtDate(meta.dateVal)}</td>
+                <td class="font-bold">${meta.counterparty}</td>
                 <td class="font-sm text-body">${t.purpose || '—'}</td>
                 <td>${statusBadge(t.status)}</td>
-                <td class="${isOut ? 'amt-out' : 'amt-in'}">${isOut ? '−' : '+'}${fmtBDT(t.amount)}</td>
+                <td class="${meta.amountClass}">${meta.amountSign}${fmtBDT(t.amount)}</td>
                 <td><button class="btn btn-ghost btn-xs" onclick="viewTxnDetail('${t.id}')">Details →</button></td>
             </tr>`;
         }).join('');
@@ -798,16 +970,16 @@ async function viewTxnDetail(id) {
     try {
         const res = await apiRequest(`/transfers/${id}`);
         const t   = res.data;
-        const isOut = t.senderUserId === currentUser?.id;
+        const meta = getTransactionMeta(t);
 
         document.getElementById('modal-txn-body').innerHTML = `
             <div class="review-box mb-16">
                 <div class="review-row"><span class="review-key">Transaction #</span><span class="mono-id">${t.transactionNumber || '—'}</span></div>
                 <div class="review-row"><span class="review-key">Status</span><span>${statusBadge(t.status)}</span></div>
-                <div class="review-row"><span class="review-key">Date</span><span class="review-val">${fmtDate(t.createdAt)}</span></div>
-                <div class="review-row"><span class="review-key">Sender</span><span class="review-val">${t.senderUsername}</span></div>
-                <div class="review-row"><span class="review-key">Recipient</span><span class="review-val">${t.recipientUsername}</span></div>
-                <div class="review-row"><span class="review-key">Amount</span><span class="review-val ${isOut ? 'amt-out' : 'amt-in'}">${isOut ? '−' : '+'}${fmtBDT(t.amount)}</span></div>
+                <div class="review-row"><span class="review-key">Date</span><span class="review-val">${fmtDate(meta.dateVal)}</span></div>
+                <div class="review-row"><span class="review-key">Sender</span><span class="review-val">${t.senderUsername || t.senderAccountNumber || 'System Vault'}</span></div>
+                <div class="review-row"><span class="review-key">Recipient</span><span class="review-val">${t.receiverUsername || t.recipientUsername || t.receiverAccountNumber || 'Recipient'}</span></div>
+                <div class="review-row"><span class="review-key">Amount</span><span class="review-val ${meta.amountClass}">${meta.amountSign}${fmtBDT(t.amount)}</span></div>
                 <div class="review-row"><span class="review-key">Purpose</span><span class="review-val">${t.purpose || '—'}</span></div>
                 <div class="review-row"><span class="review-key">Idempotency Key</span><span class="mono-id">${t.idempotencyKey || '—'}</span></div>
             </div>
@@ -999,4 +1171,164 @@ function closeModal(id) { const m = document.getElementById(id); if (m) m.style.
 
 function backdropClose(e, id) {
     if (e.target === e.currentTarget) closeModal(id);
+}
+
+/* ============================================================
+   NOTIFICATION CENTER & REAL-TIME TOAST ALERTS
+   ============================================================ */
+let notificationCount = 0;
+
+function toggleNotifications(e) {
+    if (e) e.stopPropagation();
+    const drop = document.getElementById('notif-dropdown');
+    if (!drop) return;
+    const isShowing = drop.classList.contains('show');
+    if (!isShowing) {
+        drop.classList.add('show');
+        loadNotifications();
+    } else {
+        drop.classList.remove('show');
+    }
+}
+
+async function loadNotifications() {
+    if (!authToken) return;
+    try {
+        const [reqRes, txRes, grpRes] = await Promise.all([
+            apiRequest('/requests/incoming').catch(() => ({ data: [] })),
+            apiRequest('/transfers?page=1&pageSize=6').catch(() => ({ data: [] })),
+            apiRequest('/groups').catch(() => ({ data: [] }))
+        ]);
+
+        const incomingReqs = (reqRes.data || []).filter(r => {
+            const st = (r.status || '').toUpperCase();
+            return st === 'PENDING' || st === 'PARTIALLYPAID' || st === 'PARTIALLY_PAID';
+        });
+
+        const myGroups = (grpRes.data || []).filter(g => {
+            const st = (g.status || '').toUpperCase();
+            const isActive = st === 'PENDING' || st === 'PARTIALLYPAID' || st === 'PARTIALLY_PAID';
+            const myMem = (g.members || []).find(m => m.userId === currentUser?.id);
+            // Alert if user is an invited member and hasn't fully paid yet
+            return isActive && myMem && (myMem.status || '').toUpperCase() !== 'PAID';
+        });
+
+        const recentTxns = txRes.data || [];
+        const items = [];
+
+        // Group collection invitations notifications (TOP PRIORITY)
+        myGroups.forEach(g => {
+            const myMem = (g.members || []).find(m => m.userId === currentUser?.id);
+            const reqAmt = myMem ? (myMem.remainingAmount || myMem.requiredAmount) : 0;
+            items.push({
+                type: 'req',
+                icon: '👥',
+                title: `Group Pool: "${g.title}"`,
+                desc: `Invited by ${g.creatorUsername} • Your assigned share: ${fmtBDT(reqAmt)}`,
+                time: g.createdAtUtc || g.createdAt,
+                action: () => { toggleNotifications(); navigateTo('groups'); }
+            });
+        });
+
+        // Incoming requests notifications
+        incomingReqs.forEach(r => {
+            const name = r.requesterName || r.requesterUsername || r.requesterAccountNumber || 'A peer';
+            items.push({
+                type: 'req',
+                icon: '📥',
+                title: `Money Request from ${name}`,
+                desc: `Requested ${fmtBDT(r.remainingAmount)} • "${r.note || 'No note'}"`,
+                time: r.createdAtUtc || r.createdAt,
+                action: () => { toggleNotifications(); navigateTo('requests'); }
+            });
+        });
+
+        // Recent transaction alerts
+        recentTxns.slice(0, 4).forEach(t => {
+            const meta = getTransactionMeta(t);
+            items.push({
+                type: 'send',
+                icon: meta.isDebit ? '📤' : '💸',
+                title: meta.isDebit ? `Money Sent to ${meta.counterparty}` : `Money Received from ${meta.counterparty}`,
+                desc: `${meta.isDebit ? 'Debited' : 'Credited'} ${fmtBDT(t.amount)} • "${t.purpose || 'Direct safe send'}"`,
+                time: meta.dateVal,
+                action: () => { toggleNotifications(); navigateTo('activity'); }
+            });
+        });
+
+        // Total active unread action count
+        notificationCount = incomingReqs.length + myGroups.length;
+        const badge = document.getElementById('notif-badge');
+        if (badge) {
+            if (notificationCount > 0) {
+                badge.textContent = notificationCount;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        // Render dropdown list
+        const listEl = document.getElementById('notif-list');
+        if (listEl) {
+            if (!items.length) {
+                listEl.innerHTML = `<div class="empty-state" style="padding:24px;">No new alerts 🔔</div>`;
+            } else {
+                listEl.innerHTML = items.map((item, idx) => `
+                    <div class="notif-item" onclick="handleNotifClick(${idx})">
+                        <div class="notif-icon ${item.type}">${item.icon}</div>
+                        <div class="notif-content">
+                            <div class="notif-title">${item.title}</div>
+                            <div class="notif-sub">${item.desc}</div>
+                            <div class="notif-time">${fmtDate(item.time)}</div>
+                        </div>
+                    </div>`).join('');
+                window._currentNotifItems = items;
+            }
+        }
+    } catch { /* silently handle */ }
+}
+
+function handleNotifClick(idx) {
+    if (window._currentNotifItems && window._currentNotifItems[idx]) {
+        window._currentNotifItems[idx].action();
+    }
+}
+
+function markAllNotificationsRead() {
+    const badge = document.getElementById('notif-badge');
+    if (badge) badge.style.display = 'none';
+    notificationCount = 0;
+    const drop = document.getElementById('notif-dropdown');
+    if (drop) drop.classList.remove('show');
+    showToast('Notifications Cleared', 'All active alerts marked as acknowledged.', 'info');
+}
+
+function showToast(title, message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const icons = {
+        success: '✓',
+        info:    '🔔',
+        warning: '⚠️',
+        danger:  '✗'
+    };
+
+    const card = document.createElement('div');
+    card.className = `toast-card ${type}`;
+    card.innerHTML = `
+        <div style="font-size:18px;line-height:1;font-weight:bold;color:var(--${type === 'info' ? 'primary' : type});">${icons[type] || '🔔'}</div>
+        <div style="flex:1;">
+            <div style="font-size:13px;font-weight:700;color:var(--text-heading);">${title}</div>
+            <div style="font-size:12px;color:var(--text-body);margin-top:2px;">${message}</div>
+        </div>`;
+
+    container.appendChild(card);
+
+    setTimeout(() => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(-10px) scale(0.96)';
+        setTimeout(() => card.remove(), 250);
+    }, 4500);
 }

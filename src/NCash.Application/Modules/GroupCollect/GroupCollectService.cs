@@ -53,28 +53,32 @@ public class GroupCollectService : IGroupCollectService
         var collection = new GroupCollection(
             creatorUserId,
             creatorAccount.Id,
-            dto.Title,
-            dto.Description,
+            dto.Title.Trim(),
+            dto.ResolvedDescription,
             dto.TargetAmount,
             expiresAt);
 
         await _context.GroupCollections.AddAsync(collection, cancellationToken);
 
-        if (dto.InitialMembers != null && dto.InitialMembers.Count > 0)
+        var members = dto.ResolvedMembers;
+        if (members != null && members.Count > 0)
         {
-            foreach (var memberDto in dto.InitialMembers)
+            var defaultSplitAmount = Math.Round(dto.TargetAmount / Math.Max(1, members.Count + 1), 2);
+            foreach (var memberDto in members)
             {
-                var memberAcc = await _accountRepository.GetByAccountNumberAsync(memberDto.MemberAccountNumber.Trim().ToUpperInvariant(), cancellationToken);
+                var memberQuery = memberDto.ResolvedMember;
+                if (string.IsNullOrWhiteSpace(memberQuery)) continue;
+
+                var memberAcc = await _accountRepository.GetByIdentifierAsync(memberQuery, cancellationToken);
                 if (memberAcc == null)
-                    throw new DomainException(ErrorCodes.AccountNotFound, $"Member account {memberDto.MemberAccountNumber} not found.");
+                    throw new DomainException(ErrorCodes.AccountNotFound, $"Member account '{memberQuery}' not found.");
 
                 if (memberAcc.UserId == creatorUserId)
-                    throw new DomainException(ErrorCodes.SelfTransferNotAllowed, "Creator is already the collection owner and cannot be added as a separate paying member.");
+                    continue;
 
-                if (memberDto.RequiredAmount <= 0)
-                    throw new DomainException(ErrorCodes.InvalidAmount, "Member required contribution must be greater than zero.");
+                var requiredAmt = memberDto.RequiredAmount > 0 ? memberDto.RequiredAmount : defaultSplitAmount;
 
-                var member = new GroupCollectionMember(collection.Id, memberAcc.UserId, memberAcc.Id, memberDto.RequiredAmount);
+                var member = new GroupCollectionMember(collection.Id, memberAcc.UserId, memberAcc.Id, requiredAmt);
                 await _context.GroupCollectionMembers.AddAsync(member, cancellationToken);
             }
         }
@@ -101,9 +105,13 @@ public class GroupCollectService : IGroupCollectService
         if (collection.Status == GroupCollectionStatus.Cancelled || collection.Status == GroupCollectionStatus.Expired || collection.Status == GroupCollectionStatus.Paid)
             throw new DomainException(ErrorCodes.InvalidTransactionState, $"Cannot invite members to a collection in status {collection.Status}.");
 
-        var memberAcc = await _accountRepository.GetByAccountNumberAsync(dto.MemberAccountNumber.Trim().ToUpperInvariant(), cancellationToken);
+        var memberQuery = dto.ResolvedMember;
+        if (string.IsNullOrWhiteSpace(memberQuery))
+            throw new DomainException(ErrorCodes.ValidationFailed, "Member identifier is required.");
+
+        var memberAcc = await _accountRepository.GetByIdentifierAsync(memberQuery, cancellationToken);
         if (memberAcc == null)
-            throw new DomainException(ErrorCodes.AccountNotFound, $"Member account {dto.MemberAccountNumber} not found.");
+            throw new DomainException(ErrorCodes.AccountNotFound, $"Member account '{memberQuery}' not found.");
 
         if (memberAcc.UserId == currentUserId)
             throw new DomainException(ErrorCodes.SelfTransferNotAllowed, "Cannot invite yourself as a member to your own collection.");
@@ -112,10 +120,11 @@ public class GroupCollectService : IGroupCollectService
         if (existingMember != null)
             throw new DomainException(ErrorCodes.DuplicateRequest, "This user is already a member of this collection.");
 
-        if (dto.RequiredAmount <= 0)
-            throw new DomainException(ErrorCodes.InvalidAmount, "Required contribution amount must be greater than zero.");
+        var requiredAmount = dto.RequiredAmount > 0
+            ? dto.RequiredAmount
+            : Math.Max(100m, (collection.TargetAmount - collection.CollectedAmount) / Math.Max(1, collection.Members.Count + 1));
 
-        var member = new GroupCollectionMember(collection.Id, memberAcc.UserId, memberAcc.Id, dto.RequiredAmount);
+        var member = new GroupCollectionMember(collection.Id, memberAcc.UserId, memberAcc.Id, requiredAmount);
         await _context.GroupCollectionMembers.AddAsync(member, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
 

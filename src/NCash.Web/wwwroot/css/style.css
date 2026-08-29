@@ -418,6 +418,163 @@ textarea.tf-input { height: auto; padding-top: 12px; padding-bottom: 12px; resiz
 }
 
 /* --------------------------------------------------------------------------
+   Notification Bell, Badge & Dropdown Tray
+   -------------------------------------------------------------------------- */
+.notif-wrapper {
+    position: relative;
+}
+
+.notif-btn {
+    position: relative;
+    width: 40px; height: 40px;
+    border-radius: var(--r-btn-sm);
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: 1.5px solid var(--border);
+    color: var(--text-body);
+    cursor: pointer;
+    transition: all .15s ease;
+}
+.notif-btn:hover {
+    background: var(--bg-soft);
+    color: var(--primary);
+    border-color: var(--primary-light);
+}
+
+.notif-badge {
+    position: absolute;
+    top: -4px; right: -4px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    min-width: 18px; height: 18px;
+    border-radius: 9px;
+    padding: 0 4px;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(234,56,76,.4);
+    animation: pulseBadge 2s infinite;
+}
+
+@keyframes pulseBadge {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.notif-dropdown {
+    position: absolute;
+    top: 50px; right: 0;
+    width: 360px;
+    max-height: 480px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+    display: none;
+    flex-direction: column;
+    z-index: 1050;
+    overflow: hidden;
+    animation: slideDown .18s ease-out;
+}
+
+.notif-dropdown.show {
+    display: flex;
+}
+
+.notif-header {
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-soft);
+}
+
+.notif-header-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.notif-list {
+    padding: 4px 0;
+    overflow-y: auto;
+    max-height: 360px;
+}
+
+.notif-item {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    transition: background .12s;
+    cursor: pointer;
+}
+.notif-item:hover {
+    background: var(--bg-soft);
+}
+.notif-item:last-child {
+    border-bottom: none;
+}
+
+.notif-icon {
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+}
+.notif-icon.req { background: #EBF3FF; color: var(--primary); }
+.notif-icon.send { background: #ECFDF5; color: var(--success); }
+.notif-icon.warn { background: #FFFBEB; color: var(--warning); }
+
+.notif-content { flex: 1; }
+.notif-title { font-size: 13px; font-weight: 700; color: var(--text-heading); margin-bottom: 2px; }
+.notif-sub { font-size: 12px; color: var(--text-body); line-height: 1.4; }
+.notif-time { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
+
+/* Real-time Toast Alert Notifications */
+.toast-container {
+    position: fixed;
+    top: 85px; right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+.toast-card {
+    pointer-events: auto;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+    padding: 12px 16px;
+    min-width: 280px;
+    max-width: 360px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: toastIn .22s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all .2s ease;
+}
+.toast-card.success { border-left: 4px solid var(--success); }
+.toast-card.info    { border-left: 4px solid var(--primary); }
+.toast-card.warning { border-left: 4px solid var(--warning); }
+.toast-card.danger  { border-left: 4px solid var(--danger); }
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* --------------------------------------------------------------------------
    LEFT VERTICAL SIDEBAR (.vertical-menu)
    w:84px compact, bg:#fff, border-right, icon-only nav links
    -------------------------------------------------------------------------- */

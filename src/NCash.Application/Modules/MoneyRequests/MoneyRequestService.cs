@@ -37,7 +37,12 @@ public record MoneyRequestResponseDto(
     string? Note,
     DateTime? ExpiresAtUtc,
     DateTime? CompletedAtUtc,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc)
+{
+    public string RequesterUsername => RequesterName;
+    public string PayerUsername => PayerName;
+    public DateTime CreatedAt => CreatedAtUtc;
+}
 
 public record PayMoneyRequestDto(
     decimal? PaymentAmount = null,

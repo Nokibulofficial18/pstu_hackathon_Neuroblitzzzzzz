@@ -170,6 +170,27 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
             </a>
 
+            <!-- Notification Bell & Dropdown -->
+            <div class="notif-wrapper">
+                <button class="notif-btn" id="btn-notif" onclick="toggleNotifications(event)" title="Notifications" aria-label="Notifications">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <span class="notif-badge" id="notif-badge" style="display:none;">0</span>
+                </button>
+
+                <div class="notif-dropdown" id="notif-dropdown" onclick="event.stopPropagation()">
+                    <div class="notif-header">
+                        <div class="notif-header-title">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                            <span>Notifications</span>
+                        </div>
+                        <button class="btn btn-ghost btn-xs" onclick="markAllNotificationsRead()" style="font-size:11px;">Mark Read</button>
+                    </div>
+                    <div class="notif-list" id="notif-list">
+                        <div class="empty-state" style="padding:20px;">No new alerts 🔔</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="profile-dropdown" onclick="navigateTo('profile')">
                 <div class="profile-pix-top-banner" id="hdr-avatar">R</div>
                 <div class="welcome" id="hdr-welcome">Welcome Admin</div>
@@ -684,6 +705,10 @@
                 <input id="grp-title" class="tf-input no-icon" placeholder="e.g. Saint Martin Tour Split" required>
             </div>
             <div class="form-group">
+                <label class="form-label">Description (Optional)</label>
+                <input id="grp-desc" class="tf-input no-icon" placeholder="e.g. Shared expenses for transportation and hotel">
+            </div>
+            <div class="form-group">
                 <label class="form-label">Target Amount (BDT)</label>
                 <input type="number" id="grp-target" class="tf-input no-icon" placeholder="4000.00" step="0.01" min="1" required>
             </div>
@@ -698,6 +723,31 @@
         </form>
     </div>
 </div>
+
+<!-- 7. Pay Group Contribution Modal -->
+<div id="modal-pay-group" class="modal-backdrop" style="display:none;" onclick="backdropClose(event,'modal-pay-group')">
+    <div class="modal-dialog" style="max-width:440px;">
+        <div class="modal-header">
+            <span class="modal-title">Contribute to Collection</span>
+            <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-pay-group')">✕</button>
+        </div>
+        <div id="pay-grp-details" class="review-box mb-16"></div>
+        <form onsubmit="submitPayGroup(event)">
+            <input type="hidden" id="pay-grp-id">
+            <div class="form-group">
+                <label class="form-label">Contribution Amount (BDT)</label>
+                <input type="number" id="pay-grp-amount" class="tf-input no-icon" step="0.01" min="1" required>
+            </div>
+            <div class="flex-end">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modal-pay-group')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Authorize Contribution</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Real-time Toast Notifications Container -->
+<div class="toast-container" id="toast-container"></div>
 
 <script src="js/app.js"></script>
 </body>
