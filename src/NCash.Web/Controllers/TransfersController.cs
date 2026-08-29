@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using NCash.Application.Common;
 using NCash.Application.Modules.PaymentEngine;
 using NCash.Application.Modules.PaymentEngine.DTOs;
@@ -33,9 +34,10 @@ public class TransfersController : BaseApiController
     /// <summary>
     /// Execute an atomic, idempotent P2P transfer with row-level locking and Risk Shield protection.
     /// Header: Idempotency-Key: UUID
-    /// Body: { recipientId: "...", amount: 2500, purpose: "Dinner" }
+    /// Body: { receiverAccountNumber: "...", amount: 2500, purpose: "Dinner" }
     /// </summary>
     [HttpPost]
+    [EnableRateLimiting("transfer-limiter")]
     [ProducesResponseType(typeof(ApiResponse<TransferResultDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Transfer(

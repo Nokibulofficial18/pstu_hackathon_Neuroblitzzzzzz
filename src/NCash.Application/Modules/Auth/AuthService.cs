@@ -206,6 +206,21 @@ public class AuthService : IAuthService
         if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
         {
             _logger.LogWarning("Failed login attempt for identifier: {Identifier}", identifier);
+
+            // P1/P3 FIX: Record FAILED_LOGIN event so RiskShield can react to it.
+            // Only record if user exists (don't create audit records for unknown identifiers to avoid leaking user existence).
+            if (user != null)
+            {
+                var failedLoginAudit = new SystemAuditLog(
+                    user.Id,
+                    "FAILED_LOGIN",
+                    "User",
+                    user.Id.ToString(),
+                    metadataJson: "{\"reason\":\"InvalidPassword\"}");
+                await _context.SystemAuditLogs.AddAsync(failedLoginAudit, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+
             throw new DomainException(ErrorCodes.InvalidCredentials, "Invalid credentials. Please check your username/email and password.", 401);
         }
 
@@ -298,9 +313,61 @@ public class AuthService : IAuthService
         if (string.IsNullOrEmpty(user.TransactionPinHash))
             throw new DomainException(ErrorCodes.ValidationFailed, "No transaction PIN has been set for this account. Please set a PIN first.");
 
+        // P1/P3 FIX: PIN brute-force lockout.
+        // Count failed PIN attempts in the last 15 minutes.
+        var fifteenMinutesAgo = DateTime.UtcNow.AddMinutes(-15);
+        var recentFailedPinAttempts = await _context.SystemAuditLogs
+            .CountAsync(l => l.ActorId == userId &&
+                             l.Action == "FAILED_PIN" &&
+                             l.CreatedAtUtc >= fifteenMinutesAgo, cancellationToken);
+
+        // Lock out after 5 failed PIN attempts in 15 minutes.
+        if (recentFailedPinAttempts >= 5)
+        {
+            _logger.LogWarning("PIN lockout triggered for UserId: {UserId}. {Count} failed attempts in 15 minutes.",
+                userId, recentFailedPinAttempts);
+
+            var lockoutAudit = new SystemAuditLog(
+                userId,
+                "PIN_LOCKOUT",
+                "User",
+                userId.ToString(),
+                metadataJson: $"{{\"failedAttempts\":{recentFailedPinAttempts},\"windowMinutes\":15}}");
+            await _context.SystemAuditLogs.AddAsync(lockoutAudit, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            throw new DomainException(ErrorCodes.InvalidCredentials,
+                "Too many failed PIN attempts. Your PIN verification is temporarily locked. Please try again in 15 minutes.", 429);
+        }
+
         var isValid = _passwordHasher.VerifyPassword(request.Pin.Trim(), user.TransactionPinHash);
         if (!isValid)
+        {
+            _logger.LogWarning("Failed PIN verification for UserId: {UserId}. Attempt {Attempt}/5.",
+                userId, recentFailedPinAttempts + 1);
+
+            // Record FAILED_PIN event — this feeds RiskShield's risk scoring
+            var failedPinAudit = new SystemAuditLog(
+                userId,
+                "FAILED_PIN",
+                "User",
+                userId.ToString(),
+                metadataJson: $"{{\"attemptNumber\":{recentFailedPinAttempts + 1}}}");
+            await _context.SystemAuditLogs.AddAsync(failedPinAudit, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            // Generic error message — don't tell client how many attempts remain (avoids enumeration)
             throw new DomainException(ErrorCodes.InvalidCredentials, "Invalid transaction PIN.", 401);
+        }
+
+        // Successful PIN verification — record it
+        var successAudit = new SystemAuditLog(
+            userId,
+            "PIN_VERIFIED",
+            "User",
+            userId.ToString());
+        await _context.SystemAuditLogs.AddAsync(successAudit, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
 
         return new PinOperationResultDto(true, "Transaction PIN verified successfully.");
     }

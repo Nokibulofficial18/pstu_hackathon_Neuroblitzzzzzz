@@ -21,26 +21,50 @@ namespace NCash.Web.Extensions;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddNCashInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddNCashInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
     {
         var connectionString = configuration.GetConnectionString("DefaultConnection");
 
-        if (!string.IsNullOrEmpty(connectionString) && !connectionString.Contains("InMemory", StringComparison.OrdinalIgnoreCase))
+        // ── P0 FIX: Production MUST never fall back to InMemory database ──────────────
+        // Production fails closed if connection string is missing or is a placeholder.
+        bool isTestOrDevelopment = environment.IsDevelopment()
+            || environment.IsEnvironment("Test")
+            || environment.IsEnvironment("Testing");
+
+        bool connectionStringIsPlaceholder = string.IsNullOrWhiteSpace(connectionString)
+            || connectionString.Contains("PLACEHOLDER", StringComparison.OrdinalIgnoreCase)
+            || connectionString.Contains("InMemory", StringComparison.OrdinalIgnoreCase);
+
+        if (connectionStringIsPlaceholder && !isTestOrDevelopment)
+        {
+            throw new InvalidOperationException(
+                "FATAL STARTUP ERROR: ConnectionStrings:DefaultConnection is missing or is a placeholder. " +
+                "Production cannot start without a real PostgreSQL connection. " +
+                "Set the environment variable ConnectionStrings__DefaultConnection with a valid PostgreSQL connection string.");
+        }
+
+        if (!connectionStringIsPlaceholder)
         {
             services.AddDbContext<NCashDbContext>(options =>
             {
                 options.UseNpgsql(connectionString, npgsqlOptions =>
                 {
                     npgsqlOptions.MigrationsAssembly(typeof(NCashDbContext).Assembly.FullName);
+                    // Enable command timeout for safety
+                    npgsqlOptions.CommandTimeout(60);
                 });
                 options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
             });
         }
         else
         {
-            // In-Memory Database fallback for fast offline development or unit testing
+            // InMemory is ONLY acceptable for Development / Test when connection string is not set.
+            // A warning is logged to ensure developers know this is a non-production configuration.
             services.AddDbContext<NCashDbContext>(options =>
-                options.UseInMemoryDatabase("NCash_ClosedSimulated_Db")
+                options.UseInMemoryDatabase("NCash_Dev_InMemory")
                        .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
         }
 
@@ -88,7 +112,7 @@ public static class ServiceCollectionExtensions
         {
             options.RejectionStatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status429TooManyRequests;
 
-            // Global default policy (100 req/min)
+            // Global default policy (100 req/min per IP)
             options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
                 System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
@@ -100,19 +124,19 @@ public static class ServiceCollectionExtensions
                         Window = TimeSpan.FromMinutes(1)
                     }));
 
-            // Auth rate limit (20 req/min)
+            // Auth rate limit (10 req/min per IP — stricter for login/register)
             options.AddPolicy("auth-limiter", httpContext =>
                 System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
                     factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
                     {
                         AutoReplenishment = true,
-                        PermitLimit = 20,
-                        QueueLimit = 5,
+                        PermitLimit = 10,
+                        QueueLimit = 2,
                         Window = TimeSpan.FromMinutes(1)
                     }));
 
-            // Financial transfers rate limit (30 req/min)
+            // Financial transfers rate limit (30 req/min per authenticated user)
             options.AddPolicy("transfer-limiter", httpContext =>
                 System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
@@ -123,6 +147,20 @@ public static class ServiceCollectionExtensions
                         AutoReplenishment = true,
                         PermitLimit = 30,
                         QueueLimit = 5,
+                        Window = TimeSpan.FromMinutes(1)
+                    }));
+
+            // PIN verification rate limit (5 req/min per user — brute-force prevention)
+            options.AddPolicy("pin-limiter", httpContext =>
+                System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                                  ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                                  ?? "anonymous",
+                    factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                    {
+                        AutoReplenishment = true,
+                        PermitLimit = 5,
+                        QueueLimit = 0,
                         Window = TimeSpan.FromMinutes(1)
                     }));
         });

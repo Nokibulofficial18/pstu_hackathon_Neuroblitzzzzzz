@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using NCash.Domain.Entities;
 
@@ -21,7 +22,9 @@ public interface IApplicationDbContext
     DbSet<IdempotencyRecord> IdempotencyRecords { get; }
 
     ChangeTracker ChangeTracker { get; }
+    DatabaseFacade Database { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 }
+

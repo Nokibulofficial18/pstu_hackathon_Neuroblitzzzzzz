@@ -9,8 +9,10 @@
 # The real appsettings files contain DB passwords and JWT secrets.
 # Use environment variables or user secrets for local/prod config.
 # ---------------------------------------------------------------------------
-# Uncomment the line below ONLY if you store real secrets in appsettings.json.
-# For this hackathon repo the file is intentionally kept (judges need it).
+.env
+.env.*
+!.env.example
+*.local.json
 appsettings.json
 appsettings.*.json
 !appsettings.json

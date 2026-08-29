@@ -23,7 +23,13 @@ public record ExecuteTransferCommand(
     NCash.Domain.Enums.TransactionType Type,
     string? Purpose = null,
     decimal Fee = 0m,
-    bool BypassRiskCheck = false);
+    bool BypassRiskCheck = false,
+    /// <summary>
+    /// When not null, PaymentEngine will NOT begin/commit/rollback its own transaction.
+    /// The caller is responsible for committing or rolling back the provided transaction.
+    /// This enables atomic composite operations (e.g. MoneyRequest payment + state update).
+    /// </summary>
+    Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? ExternalTransaction = null);
 
 public record TransferResultDto(
     Guid TransactionId,

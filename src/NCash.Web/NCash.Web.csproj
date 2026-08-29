@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <ProjectReference Include="..\NCash.Application\NCash.Application.csproj" />
@@ -19,6 +19,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>038ce855-dfee-49c2-8302-b6e84ed7270e</UserSecretsId>
   </PropertyGroup>
 
 </Project>

@@ -177,68 +177,95 @@ public class GroupCollectService : IGroupCollectService
 
     public async Task<TransferResultDto> PayContributionAsync(Guid currentUserId, Guid collectionId, PayContributionDto dto, CancellationToken cancellationToken = default)
     {
-        var collection = await _context.GroupCollections
-            .Include(g => g.CreatorAccount)
-            .Include(g => g.Members)
-            .FirstOrDefaultAsync(g => g.Id == collectionId, cancellationToken);
+        // ── P1 FIX: Single atomic database transaction for the entire contribution payment ─
+        // BEFORE: PaymentEngine committed internally, then member/collection state update
+        // happened in a SEPARATE SaveChangesAsync. A failure between them would leave
+        // money moved but collection status unchanged.
+        // NOW: Both transfer AND aggregate state update share ONE transaction.
 
-        if (collection == null)
-            throw new DomainException(ErrorCodes.InvalidTransactionState, "Group collection not found.", 404);
+        await using var dbTransaction = await _context.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            // Load collection — guarded by the outer DB transaction + PaymentEngine account-level locks.
+            // Status checks below prevent duplicate contributions under the transaction.
+            var collection = await _context.GroupCollections
+                .Include(g => g.CreatorAccount)
+                .Include(g => g.Members)
+                .FirstOrDefaultAsync(g => g.Id == collectionId, cancellationToken);
 
-        collection.CheckExpiration();
+            if (collection == null)
+                throw new DomainException(ErrorCodes.InvalidTransactionState, "Group collection not found.", 404);
 
-        if (collection.Status == GroupCollectionStatus.Cancelled)
-            throw new DomainException(ErrorCodes.InvalidTransactionState, "This group collection has been cancelled.");
+            collection.CheckExpiration();
 
-        if (collection.Status == GroupCollectionStatus.Expired)
-            throw new DomainException(ErrorCodes.InvalidTransactionState, "This group collection has expired.");
+            if (collection.Status == GroupCollectionStatus.Cancelled)
+                throw new DomainException(ErrorCodes.InvalidTransactionState, "This group collection has been cancelled.");
 
-        if (collection.Status == GroupCollectionStatus.Paid)
-            throw new DomainException(ErrorCodes.InvalidTransactionState, "This group collection is already fully collected/paid.");
+            if (collection.Status == GroupCollectionStatus.Expired)
+                throw new DomainException(ErrorCodes.InvalidTransactionState, "This group collection has expired.");
 
-        var member = collection.Members.FirstOrDefault(m => m.UserId == currentUserId);
-        if (member == null)
-            throw new DomainException(ErrorCodes.UnauthorizedAccess, "You are not an invited member of this group collection.", 403);
+            if (collection.Status == GroupCollectionStatus.Paid)
+                throw new DomainException(ErrorCodes.InvalidTransactionState, "This group collection is already fully collected/paid.");
 
-        if (member.Status == GroupMemberStatus.Paid)
-            throw new DomainException(ErrorCodes.InvalidTransactionState, "You have already fully paid your assigned contribution.");
+            var member = collection.Members.FirstOrDefault(m => m.UserId == currentUserId);
+            if (member == null)
+                throw new DomainException(ErrorCodes.UnauthorizedAccess, "You are not an invited member of this group collection.", 403);
 
-        var payAmount = dto.Amount.HasValue && dto.Amount.Value > 0
-            ? dto.Amount.Value
-            : member.RemainingAmount;
+            if (member.Status == GroupMemberStatus.Paid)
+                throw new DomainException(ErrorCodes.InvalidTransactionState, "You have already fully paid your assigned contribution.");
 
-        if (payAmount <= 0)
-            throw new DomainException(ErrorCodes.InvalidAmount, "Payment amount must be greater than zero.");
+            // Re-read under lock
+            var remainingUnderLock = member.RemainingAmount;
+            var payAmount = dto.Amount.HasValue && dto.Amount.Value > 0
+                ? dto.Amount.Value
+                : remainingUnderLock;
 
-        if (payAmount > member.RemainingAmount)
-            throw new DomainException(ErrorCodes.InvalidAmount, $"Contribution amount BDT {payAmount:N2} exceeds your remaining assigned share of BDT {member.RemainingAmount:N2}.");
+            if (payAmount <= 0)
+                throw new DomainException(ErrorCodes.InvalidAmount, "Payment amount must be greater than zero.");
 
-        // CRITICAL: Call Payment Engine to atomically execute transfer and update balances
-        var idempotencyKey = string.IsNullOrWhiteSpace(dto.IdempotencyKey)
-            ? $"GROUP-CONTRIB-{collection.Id:N}-{member.Id:N}-{member.PaidAmount:F0}-{payAmount:F0}"
-            : dto.IdempotencyKey.Trim();
+            if (payAmount > remainingUnderLock)
+                throw new DomainException(ErrorCodes.InvalidAmount, $"Contribution amount BDT {payAmount:N2} exceeds your remaining assigned share of BDT {remainingUnderLock:N2}.");
 
-        var transferCommand = new ExecuteTransferCommand(
-            SenderAccountId: member.AccountId,
-            ReceiverAccountId: collection.CreatorAccountId,
-            Amount: payAmount,
-            IdempotencyKey: idempotencyKey,
-            Type: TransactionType.GroupCollectionPayment,
-            Purpose: $"Contribution to '{collection.Title}'",
-            Fee: 0m,
-            BypassRiskCheck: false);
+            // Execute payment via PaymentEngine — sharing OUR transaction
+            var idempotencyKey = string.IsNullOrWhiteSpace(dto.IdempotencyKey)
+                ? $"GROUP-CONTRIB-{collection.Id:N}-{member.Id:N}-{member.PaidAmount:F0}-{payAmount:F0}"
+                : dto.IdempotencyKey.Trim();
 
-        var paymentResult = await _paymentEngine.ExecutePaymentAsync(transferCommand, cancellationToken);
+            var transferCommand = new ExecuteTransferCommand(
+                SenderAccountId: member.AccountId,
+                ReceiverAccountId: collection.CreatorAccountId,
+                Amount: payAmount,
+                IdempotencyKey: idempotencyKey,
+                Type: TransactionType.GroupCollectionPayment,
+                Purpose: $"Contribution to '{collection.Title}'",
+                Fee: 0m,
+                BypassRiskCheck: false,
+                ExternalTransaction: dbTransaction);  // Share our transaction
 
-        // Update domain collection tracking state
-        member.RecordPayment(payAmount);
-        collection.RecordMemberPayment(payAmount);
-        await _context.SaveChangesAsync(cancellationToken);
+            var paymentResult = await _paymentEngine.ExecutePaymentAsync(transferCommand, cancellationToken);
 
-        _logger.LogInformation("Member {UserId} contributed BDT {Amount} to Collection {CollectionId}. Status: {Status}", currentUserId, payAmount, collection.Id, collection.Status);
+            // Update domain collection tracking state — same transaction
+            member.RecordPayment(payAmount);
+            collection.RecordMemberPayment(payAmount);
 
-        return paymentResult;
+            // Single commit: transfer + collection state
+            await _context.SaveChangesAsync(cancellationToken);
+            await dbTransaction.CommitAsync(cancellationToken);
+
+            _logger.LogInformation("Member {UserId} contributed BDT {Amount} to Collection {CollectionId}. Status: {Status}",
+                currentUserId, payAmount, collection.Id, collection.Status);
+
+            return paymentResult;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Group contribution payment failed for Collection {CollectionId}. Rolling back.", collectionId);
+            await dbTransaction.RollbackAsync(cancellationToken);
+            _context.ChangeTracker.Clear();
+            throw;
+        }
     }
+
 
     public async Task<GroupCollectionDetailDto> CancelCollectionAsync(Guid currentUserId, Guid collectionId, CancellationToken cancellationToken = default)
     {

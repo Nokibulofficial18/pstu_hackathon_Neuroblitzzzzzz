@@ -185,54 +185,83 @@ public class MoneyRequestService : IMoneyRequestService
 
     public async Task<TransferResultDto> PayRequestAsync(Guid payerUserId, Guid requestId, PayMoneyRequestDto dto, CancellationToken cancellationToken = default)
     {
-        var payerAccount = await _accountRepository.GetByUserIdAsync(payerUserId, cancellationToken);
-        if (payerAccount == null)
-            throw new DomainException(ErrorCodes.AccountNotFound, "Payer account not found.");
+        // ── P1 FIX: Single atomic database transaction for the entire payment operation ─────
+        // BEFORE this fix: PaymentEngine had its own transaction (committed internally),
+        // then MoneyRequest state was updated in a SEPARATE SaveChangesAsync call.
+        // If the second commit failed, money would have moved but MoneyRequest stayed "Pending".
+        // NOW: Both the transfer AND the MoneyRequest state update share ONE transaction.
 
-        var request = await _context.MoneyRequests
-            .Include(m => m.RequesterAccount)
-            .FirstOrDefaultAsync(m => m.Id == requestId, cancellationToken);
-
-        if (request == null)
-            throw new DomainException(ErrorCodes.MoneyRequestNotFound, "Money request not found.", 404);
-
-        if (request.PayerAccountId != payerAccount.Id)
-            throw new DomainException(ErrorCodes.UnauthorizedAccess, "You are not authorized to pay this request.", 403);
-
-        if (request.ExpiresAtUtc.HasValue && request.ExpiresAtUtc.Value < DateTime.UtcNow)
+        await using var dbTransaction = await _context.BeginTransactionAsync(cancellationToken);
+        try
         {
-            throw new DomainException(ErrorCodes.MoneyRequestExpired, "This money request has expired.");
-        }
+            var payerAccount = await _accountRepository.GetByUserIdAsync(payerUserId, cancellationToken);
+            if (payerAccount == null)
+                throw new DomainException(ErrorCodes.AccountNotFound, "Payer account not found.");
 
-        var amountToPay = dto.ResolvedAmount ?? request.RemainingAmount;
-        if (amountToPay <= 0 || amountToPay > request.RemainingAmount)
+            // Load MoneyRequest — guarded by the outer DB transaction + PaymentEngine row-level account locks.
+            // Status check below (Paid/Cancelled/Rejected) under transaction prevents duplicate payments.
+            var request = await _context.MoneyRequests
+                .Include(m => m.RequesterAccount)
+                .FirstOrDefaultAsync(m => m.Id == requestId, cancellationToken);
+
+            if (request == null)
+                throw new DomainException(ErrorCodes.MoneyRequestNotFound, "Money request not found.", 404);
+
+            if (request.PayerAccountId != payerAccount.Id)
+                throw new DomainException(ErrorCodes.UnauthorizedAccess, "You are not authorized to pay this request.", 403);
+
+            if (request.Status == MoneyRequestStatus.Paid || request.Status == MoneyRequestStatus.Cancelled || request.Status == MoneyRequestStatus.Rejected)
+                throw new DomainException(ErrorCodes.InvalidTransactionState, $"This money request cannot be paid. Status: {request.Status}.");
+
+            if (request.ExpiresAtUtc.HasValue && request.ExpiresAtUtc.Value < DateTime.UtcNow)
+                throw new DomainException(ErrorCodes.MoneyRequestExpired, "This money request has expired.");
+
+            // Re-read remaining amount under lock (critical for concurrent payment prevention)
+            var remainingUnderLock = request.RemainingAmount;
+            var amountToPay = dto.ResolvedAmount ?? remainingUnderLock;
+
+            if (amountToPay <= 0 || amountToPay > remainingUnderLock)
+            {
+                throw new DomainException(ErrorCodes.MoneyRequestInvalidAmount,
+                    $"Invalid payment amount {amountToPay:N2}. Remaining owed: {remainingUnderLock:N2}.");
+            }
+
+            // Execute payment via PaymentEngine — sharing OUR transaction (not its own)
+            var command = new ExecuteTransferCommand(
+                payerAccount.Id,
+                request.RequesterAccountId,
+                amountToPay,
+                !string.IsNullOrWhiteSpace(dto.IdempotencyKey) ? dto.IdempotencyKey : $"REQ-PAY-{requestId:N}-{Guid.NewGuid():N}",
+                TransactionType.MoneyRequestPayment,
+                $"Payment for request #{request.Id.ToString()[..8]}. Note: {request.Note ?? "None"}",
+                0m,
+                BypassRiskCheck: false,
+                ExternalTransaction: dbTransaction);  // Share our transaction
+
+            var transferResult = await _paymentEngine.ExecutePaymentAsync(command, cancellationToken);
+
+            // Apply to request lifecycle — same transaction, will commit together
+            request.ApplyPayment(amountToPay);
+            _context.MoneyRequests.Update(request);
+
+            // Single commit: both the transfer AND the MoneyRequest state update
+            await _context.SaveChangesAsync(cancellationToken);
+            await dbTransaction.CommitAsync(cancellationToken);
+
+            _logger.LogInformation("Money request {RequestId} paid amount {Amount}. New status: {Status}",
+                requestId, amountToPay, request.Status);
+
+            return transferResult;
+        }
+        catch (Exception ex)
         {
-            throw new DomainException(ErrorCodes.MoneyRequestInvalidAmount,
-                $"Invalid payment amount {amountToPay:N2}. Remaining owed: {request.RemainingAmount:N2}.");
+            _logger.LogError(ex, "Money request payment failed for RequestId: {RequestId}. Rolling back.", requestId);
+            await dbTransaction.RollbackAsync(cancellationToken);
+            _context.ChangeTracker.Clear();
+            throw;
         }
-
-        // Execute payment via the isolated PaymentEngine
-        var command = new ExecuteTransferCommand(
-            payerAccount.Id,
-            request.RequesterAccountId,
-            amountToPay,
-            !string.IsNullOrWhiteSpace(dto.IdempotencyKey) ? dto.IdempotencyKey : $"REQ-PAY-{requestId:N}-{Guid.NewGuid():N}",
-            TransactionType.MoneyRequestPayment,
-            $"Payment for request #{request.Id.ToString()[..8]}. Note: {request.Note ?? "None"}",
-            0m);
-
-        var transferResult = await _paymentEngine.ExecutePaymentAsync(command, cancellationToken);
-
-        // Apply to request lifecycle
-        request.ApplyPayment(amountToPay);
-        _context.MoneyRequests.Update(request);
-        await _context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Money request {RequestId} paid amount {Amount}. New status: {Status}",
-            requestId, amountToPay, request.Status);
-
-        return transferResult;
     }
+
 
     public async Task<MoneyRequestResponseDto> RejectRequestAsync(Guid payerUserId, Guid requestId, CancellationToken cancellationToken = default)
     {

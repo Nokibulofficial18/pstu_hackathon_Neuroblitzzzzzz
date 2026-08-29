@@ -60,9 +60,11 @@ public class RecoveryController : BaseApiController
     }
 
     /// <summary>
-    /// Trigger automated state inspection and recovery diagnosis for an UNKNOWN / STUCK transaction.
+    /// (Admin/Auditor only) Trigger automated state inspection and recovery diagnosis for an UNKNOWN / STUCK transaction.
+    /// Restricted to privileged roles to prevent IDOR — regular users cannot trigger investigation of arbitrary cases.
     /// </summary>
     [HttpPost("{id:guid}/investigate")]
+    [Authorize(Roles = "Admin,Auditor")]
     [ProducesResponseType(typeof(ApiResponse<RecoveryCaseDetailDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> InvestigateCase(Guid id, CancellationToken cancellationToken)
     {

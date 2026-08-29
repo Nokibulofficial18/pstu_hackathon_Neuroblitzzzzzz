@@ -1,0 +1,95 @@
+name: NCash CI
+
+on:
+  push:
+    branches: [ main, develop, master ]
+  pull_request:
+    branches: [ main, develop, master ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (.NET 10)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build (fail on warnings that matter)
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run unit tests
+        run: dotnet test --no-build --configuration Release --verbosity normal --logger trx --results-directory ./test-results
+        env:
+          # Tests use InMemory database — no real DB credentials needed
+          ConnectionStrings__DefaultConnection: ""
+          Jwt__Secret: "CI_Test_Secret_Key_Min_32_Chars_For_Test_Only!"
+          Jwt__Issuer: "NCash"
+          Jwt__Audience: "NCashUsers"
+          SeedDemoData: "false"
+          ASPNETCORE_ENVIRONMENT: "Test"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: ./test-results/*.trx
+
+  security-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Check for vulnerable packages
+        run: dotnet list package --vulnerable --include-transitive
+        continue-on-error: true  # Don't fail CI on vulnerability report — review manually
+
+      - name: Check for outdated packages
+        run: dotnet list package --outdated
+        continue-on-error: true  # Informational only
+
+  secret-scan:
+    name: Secret Leak Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+
+      - name: Check for common secret patterns
+        run: |
+          echo "Scanning for potential leaked secrets..."
+          # Fail if real-looking DB credentials are found (detect accidental re-introduction)
+          if grep -rn "Password=Neuroblitzzzzzz" --include="*.json" --include="*.cs" --include="*.env" . 2>/dev/null | grep -v ".git"; then
+            echo "ERROR: Real database password detected in source!"
+            exit 1
+          fi
+          # Check for JWT secrets that look real (not PLACEHOLDERs)
+          if grep -rn "NCash_Super_Secure_Secret_Key" --include="*.json" --include="*.cs" . 2>/dev/null | grep -v ".git"; then
+            echo "ERROR: Original JWT secret detected in source!"
+            exit 1
+          fi
+          echo "No obvious secret patterns detected."

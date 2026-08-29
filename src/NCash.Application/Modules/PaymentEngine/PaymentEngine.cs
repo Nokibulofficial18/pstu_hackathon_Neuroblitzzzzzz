@@ -123,8 +123,21 @@ public class PaymentEngine : IPaymentEngine
             transaction.SetRiskAssessment(riskAssessment.TotalScore, riskAssessment.Level);
         }
 
-        // Step 13: Begin PostgreSQL ACID Database Transaction
-        await using var dbTransaction = await _context.BeginTransactionAsync(cancellationToken);
+        // Step 13: Begin PostgreSQL ACID Database Transaction (unless caller provided one)
+        // ── P1 FIX: When ExternalTransaction is provided, we do NOT create our own transaction.
+        // The caller is responsible for commit/rollback, enabling true composite atomicity.
+        bool ownsTransaction = command.ExternalTransaction == null;
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? dbTransaction = null;
+
+        if (ownsTransaction)
+        {
+            dbTransaction = await _context.BeginTransactionAsync(cancellationToken);
+        }
+        else
+        {
+            dbTransaction = command.ExternalTransaction;
+        }
+
         try
         {
             await _transactionRepository.AddAsync(transaction, cancellationToken);
@@ -245,8 +258,34 @@ public class PaymentEngine : IPaymentEngine
 
             timeline.Add($"[{DateTime.UtcNow:HH:mm:ss.fff}] CREDIT_EXECUTED: Credited {command.Amount:N2} {receiver.Currency} to {receiver.AccountNumber}. Balance: {receiver.Balance:N2}.");
 
-            // Step 24: Verify ledger delta is zero (Invariant: sum(Debit) - sum(Credit) == 0)
-            decimal ledgerDelta = totalDebited - totalCredited;
+            // Step 24: Verify ledger balance (Invariant: sum(Debit) == sum(Credit))
+            // ── P1 FEE FIX: When fee > 0, we must credit a fee-revenue account to keep balance.
+            // Currently fee is 0 in all user transfers, but this prevents a dormant bug.
+            // If fee > 0, the fee portion must be credited to a designated FeeRevenue account.
+            // For now, fee is always 0; if it becomes non-zero, this check will catch the imbalance
+            // and force proper fee destination accounting to be implemented.
+            decimal totalCreditedIncludingFee = totalCredited;
+            if (sender != null && command.Fee > 0m)
+            {
+                // Fee revenue credit — ensures zero ledger variance when fees are charged.
+                // The fee is credited as a system-side entry to maintain double-entry integrity.
+                // In a production system this would credit a designated fee-revenue account.
+                var feeRevenueEntry = new LedgerEntry(
+                    transaction.Id,
+                    SystemConstants.TreasuryAccountId, // Fee revenue goes to Treasury
+                    LedgerDirection.Credit,
+                    command.Fee,
+                    0m, // Balance-after is not tracked for system accounts in this simplified model
+                    $"Fee revenue from transfer {txnNumber}. Rate applied: {command.Fee:N2} BDT.");
+                await _ledgerRepository.AddEntryAsync(feeRevenueEntry, cancellationToken);
+                totalCreditedIncludingFee += command.Fee;
+
+                var feeEvent = new TransactionEvent(transaction.Id, "FEE_COLLECTED", $"Fee of {command.Fee:N2} BDT credited to system revenue.");
+                await _context.TransactionEvents.AddAsync(feeEvent, cancellationToken);
+                timeline.Add($"[{DateTime.UtcNow:HH:mm:ss.fff}] FEE_COLLECTED: {command.Fee:N2} BDT fee credited to system revenue.");
+            }
+
+            decimal ledgerDelta = totalDebited - totalCreditedIncludingFee;
             if (sender != null && ledgerDelta != 0m)
             {
                 throw new DomainException(ErrorCodes.TransactionFailed, $"Ledger integrity validation failed! Non-zero ledger delta: {ledgerDelta}. Rolling back.");
@@ -304,9 +343,17 @@ public class PaymentEngine : IPaymentEngine
             idempotencyRecord.Complete(200, JsonSerializer.Serialize(trustReceipt));
             await _idempotencyRepository.UpdateAsync(idempotencyRecord, cancellationToken);
 
-            // Step 27: Commit database transaction atomically
+            // Step 27: Persist all changes.
+            // If caller provided an ExternalTransaction, we only SaveChanges — NOT commit.
+            // The caller will commit (or rollback) after updating their own business aggregate.
             await _context.SaveChangesAsync(cancellationToken);
-            await dbTransaction.CommitAsync(cancellationToken);
+
+            if (ownsTransaction)
+            {
+                // We own the transaction — commit it now
+                await dbTransaction!.CommitAsync(cancellationToken);
+            }
+            // else: ExternalTransaction — caller will commit after updating business aggregate
 
             _logger.LogInformation("Successfully executed transfer {TxnNumber}. Sender: {Sender} -> Receiver: {Receiver}, Amount: {Amount}",
                 txnNumber, sender?.AccountNumber ?? "Treasury", receiver.AccountNumber, command.Amount);
@@ -317,7 +364,13 @@ public class PaymentEngine : IPaymentEngine
         catch (Exception ex)
         {
             _logger.LogError(ex, "Payment execution failed for IdempotencyKey: {Key}. Rolling back.", command.IdempotencyKey);
-            await dbTransaction.RollbackAsync(cancellationToken);
+
+            // Only rollback if we own the transaction
+            if (ownsTransaction && dbTransaction != null)
+            {
+                await dbTransaction.RollbackAsync(cancellationToken);
+            }
+            // If caller owns the transaction, they are responsible for rollback.
 
             _context.ChangeTracker.Clear();
 
@@ -330,6 +383,14 @@ public class PaymentEngine : IPaymentEngine
             }
 
             throw;
+        }
+        finally
+        {
+            // Dispose if we own the transaction
+            if (ownsTransaction && dbTransaction != null)
+            {
+                await dbTransaction.DisposeAsync();
+            }
         }
     }
 }

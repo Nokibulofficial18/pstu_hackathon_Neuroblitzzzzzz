@@ -72,11 +72,14 @@ public class AuthController : BaseApiController
 
     /// <summary>
     /// Verify the user's transaction PIN.
+    /// Rate limited: 5 attempts per minute per user (additional server-side lockout after 5 failures in 15 min).
     /// </summary>
     [HttpPost("pin/verify")]
     [Authorize]
+    [EnableRateLimiting("pin-limiter")]
     [ProducesResponseType(typeof(ApiResponse<PinOperationResultDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> VerifyTransactionPin([FromBody] VerifyPinRequestDto request, CancellationToken cancellationToken)
     {
         var result = await _authService.VerifyTransactionPinAsync(CurrentUserId, request, cancellationToken);
