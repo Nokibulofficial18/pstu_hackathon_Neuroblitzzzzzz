@@ -9,11 +9,16 @@ public class GlobalExceptionHandlerMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<GlobalExceptionHandlerMiddleware> _logger;
+    private readonly IHostEnvironment _env;
 
-    public GlobalExceptionHandlerMiddleware(RequestDelegate next, ILogger<GlobalExceptionHandlerMiddleware> logger)
+    public GlobalExceptionHandlerMiddleware(
+        RequestDelegate next,
+        ILogger<GlobalExceptionHandlerMiddleware> logger,
+        IHostEnvironment env)
     {
         _next = next;
         _logger = logger;
+        _env = env;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -32,7 +37,7 @@ public class GlobalExceptionHandlerMiddleware
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled server exception during request {Path}: {Message}", context.Request.Path, ex.Message);
-            var isDev = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+            var isDev = _env.IsDevelopment();
             var detail = isDev ? $"Internal error: {ex.Message}" : "An unexpected error occurred. Financial operations have been rolled back.";
             await HandleExceptionAsync(context, (int)HttpStatusCode.InternalServerError, "INTERNAL_SERVER_ERROR", detail);
         }

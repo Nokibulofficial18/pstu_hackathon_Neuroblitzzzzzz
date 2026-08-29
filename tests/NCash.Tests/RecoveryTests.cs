@@ -81,9 +81,9 @@ public class RecoveryTests
 
         // File Recovery Case
         var fileRes = await recoveryService.FileRecoveryCaseAsync(u1.Id, new CreateRecoveryCaseDto(
-            TransactionId: txn.Id,
-            IssueType: "MONEY_DEDUCTED_NOT_RECEIVED",
-            Description: "Deducted from balance but recipient claims pending"));
+            txn.Id.ToString(),
+            "MONEY_DEDUCTED_NOT_RECEIVED",
+            "Deducted from balance but recipient claims pending"));
 
         fileRes.CaseId.Should().NotBeEmpty();
         var caseId = fileRes.CaseId;
@@ -126,9 +126,9 @@ public class RecoveryTests
         await context.SaveChangesAsync();
 
         var fileRes = await recoveryService.FileRecoveryCaseAsync(u1.Id, new CreateRecoveryCaseDto(
-            TransactionId: txn.Id,
-            IssueType: "TRANSACTION_STUCK",
-            Description: "Transaction stuck in unknown"));
+            txn.Id.ToString(),
+            "TRANSACTION_STUCK",
+            "Transaction stuck in unknown"));
 
         fileRes.CaseId.Should().NotBeEmpty();
         var caseId = fileRes.CaseId;

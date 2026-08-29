@@ -1,17 +1,36 @@
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NCash.Application.Contracts.Persistence;
 using NCash.Application.Modules.PaymentEngine;
+using NCash.Application.Modules.PaymentEngine.DTOs;
 using NCash.Domain.Common;
 using NCash.Domain.Entities;
 using NCash.Domain.Enums;
 
 namespace NCash.Application.Modules.RecoveryCenter;
 
-public record CreateRecoveryCaseDto(
-    Guid TransactionId,
-    string IssueType,
-    string Description);
+public record CreateRecoveryCaseDto
+{
+    public string TransactionId { get; init; } = string.Empty;
+    public string IssueType { get; init; } = string.Empty;
+    public string Description { get; init; } = string.Empty;
+
+    [JsonConstructor]
+    public CreateRecoveryCaseDto(string transactionId, string issueType, string description)
+    {
+        TransactionId = transactionId;
+        IssueType = issueType;
+        Description = description;
+    }
+
+    public CreateRecoveryCaseDto(Guid transactionId, string issueType, string description)
+        : this(transactionId.ToString(), issueType, description)
+    {
+    }
+
+    public CreateRecoveryCaseDto() { }
+}
 
 public record RecoveryCaseDetailDto(
     Guid CaseId,
@@ -76,9 +95,26 @@ public class RecoveryCenterService : IRecoveryCenterService
 
     public async Task<RecoveryCaseDetailDto> FileRecoveryCaseAsync(Guid currentUserId, CreateRecoveryCaseDto dto, CancellationToken cancellationToken = default)
     {
-        var txn = await _transactionRepository.GetByIdAsync(dto.TransactionId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(dto.TransactionId))
+            throw new DomainException(ErrorCodes.ValidationFailed, "Transaction ID or Transaction Number is required.");
+
+        Transaction? txn = null;
+        var trimmedId = dto.TransactionId.Trim();
+
+        // 1. Try parsing as GUID
+        if (Guid.TryParse(trimmedId, out var txnGuid))
+        {
+            txn = await _transactionRepository.GetByIdAsync(txnGuid, cancellationToken);
+        }
+
+        // 2. Fallback: Search by TransactionNumber (e.g. TXN-20260829-...)
         if (txn == null)
-            throw new DomainException(ErrorCodes.TransactionNotFound, "Transaction not found.", 404);
+        {
+            txn = await _transactionRepository.GetByNumberAsync(trimmedId, cancellationToken);
+        }
+
+        if (txn == null)
+            throw new DomainException(ErrorCodes.TransactionNotFound, $"Transaction '{dto.TransactionId}' was not found. Please verify the Transaction ID or Number.", 404);
 
         var reporterAccount = await _accountRepository.GetByUserIdAsync(currentUserId, cancellationToken);
         if (reporterAccount == null)
@@ -89,12 +125,12 @@ public class RecoveryCenterService : IRecoveryCenterService
             throw new DomainException(ErrorCodes.UnauthorizedAccess, "You can only file recovery cases for transactions involving your account.", 403);
         }
 
-        if (await _context.DisputeCases.AnyAsync(d => d.TransactionId == dto.TransactionId && d.ReportedByUserId == currentUserId && d.Status == DisputeStatus.Open, cancellationToken))
+        if (await _context.DisputeCases.AnyAsync(d => d.TransactionId == txn.Id && d.ReportedByUserId == currentUserId && d.Status == DisputeStatus.Open, cancellationToken))
         {
             throw new DomainException(ErrorCodes.DisputeAlreadyExists, "An active recovery case is already open for this transaction.");
         }
 
-        var recoveryCase = new DisputeCase(dto.TransactionId, currentUserId, dto.IssueType, dto.Description);
+        var recoveryCase = new DisputeCase(txn.Id, currentUserId, dto.IssueType, dto.Description);
         await _context.DisputeCases.AddAsync(recoveryCase, cancellationToken);
 
         var audit = new TransactionEvent(txn.Id, "RECOVERY_REPORTED", $"Recovery case filed ({dto.IssueType}): {dto.Description}");
@@ -102,8 +138,8 @@ public class RecoveryCenterService : IRecoveryCenterService
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Recovery case {CaseId} created for Transaction {TxnId} by User {UserId}",
-            recoveryCase.Id, txn.Id, currentUserId);
+        _logger.LogInformation("Recovery case {CaseId} created for Transaction {TxnId} ({TxnNumber}) by User {UserId}",
+            recoveryCase.Id, txn.Id, txn.TransactionNumber, currentUserId);
 
         return await MapToDtoAsync(recoveryCase.Id, cancellationToken);
     }
@@ -227,6 +263,7 @@ public class RecoveryCenterService : IRecoveryCenterService
     {
         var recoveryCase = await _context.DisputeCases
             .Include(d => d.Transaction)
+            .Include(d => d.ReportedByUser)
             .FirstOrDefaultAsync(d => d.Id == caseId, cancellationToken);
 
         if (recoveryCase == null)
@@ -235,6 +272,39 @@ public class RecoveryCenterService : IRecoveryCenterService
         if (dto.Status == DisputeStatus.Resolved)
         {
             recoveryCase.Resolve(dto.Resolution);
+
+            // Execute refund / resolution compensation to the reporter's account so it appears in Transaction History
+            if (recoveryCase.Transaction != null && recoveryCase.Transaction.Amount > 0)
+            {
+                var reporterAccount = await _accountRepository.GetByUserIdAsync(recoveryCase.ReportedByUserId, cancellationToken);
+                if (reporterAccount != null)
+                {
+                    var refundIdempotencyKey = $"RESOLVE-REFUND-{recoveryCase.Id:N}";
+                    
+                    // Check if already refunded to prevent double refund
+                    var existingRefund = await _transactionRepository.GetByIdempotencyKeyAsync(refundIdempotencyKey, cancellationToken);
+                    if (existingRefund == null)
+                    {
+                        var refundCommand = new ExecuteTransferCommand(
+                            SenderAccountId: SystemConstants.TreasuryAccountId,
+                            ReceiverAccountId: reporterAccount.Id,
+                            Amount: recoveryCase.Transaction.Amount,
+                            IdempotencyKey: refundIdempotencyKey,
+                            Type: TransactionType.Refund,
+                            Purpose: $"Dispute Resolution Compensation for Case #{recoveryCase.Id.ToString()[..8]}: {dto.Resolution}",
+                            Fee: 0m,
+                            BypassRiskCheck: true);
+
+                        await _paymentEngine.ExecutePaymentAsync(refundCommand, cancellationToken);
+
+                        var refundEvent = new TransactionEvent(
+                            recoveryCase.TransactionId,
+                            "DISPUTE_REFUNDED",
+                            $"Refund of BDT {recoveryCase.Transaction.Amount:N2} issued to {reporterAccount.AccountNumber} from System Treasury.");
+                        await _context.TransactionEvents.AddAsync(refundEvent, cancellationToken);
+                    }
+                }
+            }
         }
         else if (dto.Status == DisputeStatus.Rejected)
         {
@@ -243,6 +313,8 @@ public class RecoveryCenterService : IRecoveryCenterService
 
         _context.DisputeCases.Update(recoveryCase);
         await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Recovery case {CaseId} manually resolved with status {Status}", caseId, dto.Status);
 
         return await MapToDtoAsync(caseId, cancellationToken);
     }
