@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrustFlow — Failure-Safe Digital Wallet</title>
+    <meta name="description" content="TrustFlow: Atomic transactions, double-entry ledger, concurrency protection, and explainable Risk Shield for financial reliability.">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Droid+Sans:wght@400;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- ==========================================================================
+     AUTH VIEWS — Split screen (.content-holder)
+     Left: .login-table-div | Right: .side-design-div
+     ========================================================================== -->
+<div id="auth-container" class="auth-page-wrapper">
+    <div class="content-holder">
+
+        <!-- LEFT: Login Form -->
+        <div id="view-login" class="login-table-div">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:28px;">
+                <div class="brand-crest">TF</div>
+                <div>
+                    <div class="brand-name-text">TrustFlow</div>
+                    <div class="brand-sub-text">Financial Reliability Engine</div>
+                </div>
+            </div>
+
+            <h1 class="heading-text-login">welcome</h1>
+            <div class="login-subheading-text">Sign in to continue to your failure-safe wallet.</div>
+
+            <div id="login-alert" class="alert alert-danger" style="display:none;"></div>
+
+            <form id="form-login" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label class="form-label" for="login-username">Username or Email</label>
+                    <div class="input-wrap">
+                        <span class="input-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                        </span>
+                        <input type="text" id="login-username" class="tf-input" placeholder="e.g. rahim" required autofocus autocomplete="username">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:10px;">
+                    <label class="form-label" for="login-password">Password</label>
+                    <div class="input-wrap">
+                        <span class="input-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        </span>
+                        <input type="password" id="login-password" class="tf-input" placeholder="Password123!" required autocomplete="current-password">
+                    </div>
+                </div>
+
+                <div class="flex-between" style="margin-bottom:22px;">
+                    <a href="#" onclick="switchAuthView('register')" style="font-size:13px;color:var(--primary);font-weight:700;">Forgot password?</a>
+                </div>
+
+                <button type="submit" id="btn-login" class="btn btn-primary" style="width:100%;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    <span>Login</span>
+                </button>
+            </form>
+
+            <div style="text-align:center;margin-top:20px;font-size:13px;color:var(--text-body);">
+                No account? <a href="#" onclick="switchAuthView('register')" style="color:var(--primary);font-weight:700;">Create Demo Wallet →</a>
+            </div>
+
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border-subtle);">
+                <div class="font-xs text-muted" style="margin-bottom:8px;">Quick Demo Login:</div>
+                <div class="demo-pills">
+                    <button class="btn btn-secondary btn-xs" onclick="quickLogin('rahim')">rahim</button>
+                    <button class="btn btn-secondary btn-xs" onclick="quickLogin('tasir')">tasir</button>
+                    <button class="btn btn-secondary btn-xs" onclick="quickLogin('saif')">saif</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LEFT: Register Form -->
+        <div id="view-register" class="login-table-div" style="display:none;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+                <div class="brand-crest">TF</div>
+                <div>
+                    <div class="brand-name-text">TrustFlow</div>
+                    <div class="brand-sub-text">New Account</div>
+                </div>
+            </div>
+
+            <h1 class="heading-text-login" style="font-size:26px;">Create Demo Wallet</h1>
+            <div class="login-subheading-text">Your account receives <strong style="color:var(--primary);">৳ 100,000.00</strong> simulated balance.</div>
+
+            <div id="register-alert" class="alert alert-danger" style="display:none;"></div>
+
+            <form id="form-register" onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" id="reg-name" class="tf-input no-icon" placeholder="Hasan Rahman" required>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="form-group">
+                        <label class="form-label">Username</label>
+                        <input type="text" id="reg-username" class="tf-input no-icon" placeholder="hasan" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input type="tel" id="reg-phone" class="tf-input no-icon" placeholder="+88017..." required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="reg-email" class="tf-input no-icon" placeholder="hasan@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" id="reg-password" class="tf-input no-icon" placeholder="Min 6 chars" required>
+                </div>
+
+                <button type="submit" id="btn-register" class="btn btn-primary" style="width:100%;">
+                    Create Account &amp; Claim ৳100,000
+                </button>
+            </form>
+
+            <div style="text-align:center;margin-top:16px;font-size:13px;">
+                Have an account? <a href="#" onclick="switchAuthView('login')" style="color:var(--primary);font-weight:700;">Sign In</a>
+            </div>
+        </div>
+
+        <!-- RIGHT: Illustration Panel (.side-design-div) -->
+        <div class="side-design-div">
+            <div class="side-crest">🛡️</div>
+            <div class="side-title">Zero-Variance Ledger Guard</div>
+            <div class="side-desc">Atomic double-entry accounting, PostgreSQL row-level locking, and explainable deterministic Risk Shield.</div>
+            <div class="side-features">
+                <div class="side-feature">⚡ <span>Atomic Double-Entry Transactions</span></div>
+                <div class="side-feature">🔒 <span>Row-Lock Concurrency Protection</span></div>
+                <div class="side-feature">🔍 <span>Explainable Deterministic Risk Shield</span></div>
+                <div class="side-feature">🛠️ <span>Self-Healing Recovery Center</span></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+<!-- ==========================================================================
+     AUTHENTICATED APP SHELL
+     ========================================================================== -->
+<div id="app-shell" style="display:none;">
+
+    <!-- TOP HEADER (.horizontal-banner) -->
+    <header class="horizontal-banner">
+        <div class="banner-left">
+            <button class="menu-btn" onclick="toggleSidebar()" aria-label="Toggle navigation">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <a href="#dashboard" class="flex-center gap-12" style="gap:12px;display:flex;align-items:center;text-decoration:none;">
+                <div class="brand-crest" style="width:38px;height:38px;font-size:17px;border-radius:10px;">TF</div>
+                <div>
+                    <div class="brand-name-text" style="font-size:16px;">TrustFlow</div>
+                    <div class="brand-sub-text">N-Cash Platform</div>
+                </div>
+            </a>
+        </div>
+
+        <div class="banner-right">
+            <a href="#dashboard" class="menu-btn" title="Home" style="width:40px;height:40px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </a>
+
+            <div class="profile-dropdown" onclick="navigateTo('profile')">
+                <div class="profile-pix-top-banner" id="hdr-avatar">R</div>
+                <div class="welcome" id="hdr-welcome">Welcome Admin</div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--text-muted)"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+
+            <button class="btn btn-outline btn-sm" onclick="handleLogout()">Sign Out</button>
+        </div>
+    </header>
+
+    <!-- LEFT SIDEBAR (.vertical-menu) -->
+    <aside class="vertical-menu" id="sidebar">
+        <div class="vertical-links-div">
+            <a href="#dashboard"    class="nav-link" data-nav="dashboard"    title="Dashboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                <span class="nav-label">Dashboard</span>
+            </a>
+            <a href="#send"         class="nav-link" data-nav="send"         title="Send Money">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <span class="nav-label">Send Money</span>
+            </a>
+            <a href="#requests"     class="nav-link" data-nav="requests"     title="Money Requests">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span class="nav-label">Requests</span>
+            </a>
+            <a href="#groups"       class="nav-link" data-nav="groups"       title="Group Collect">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span class="nav-label">Group Collect</span>
+            </a>
+            <a href="#activity"     class="nav-link" data-nav="activity"     title="Activity">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <span class="nav-label">Activity</span>
+            </a>
+            <a href="#recovery"     class="nav-link" data-nav="recovery"     title="Recovery Center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                <span class="nav-label">Recovery</span>
+            </a>
+            <a href="#trust-lab"    class="nav-link" data-nav="trust-lab"    title="Trust Lab">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2v7.31L4 18h16l-6-8.69V2"/><line x1="8" y1="2" x2="16" y2="2"/></svg>
+                <span class="nav-label">Trust Lab</span>
+            </a>
+        </div>
+        <div class="sidebar-bottom">
+            <a href="#profile" class="nav-link" data-nav="profile" title="Profile">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                <span class="nav-label">Profile</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- MAIN CANVAS -->
+    <main class="main-app-canvas">
+        <div class="app-container">
+
+            <!-- ====== DASHBOARD ====== -->
+            <section id="section-dashboard" class="app-view">
+
+                <!-- Hero balance card (dark gradient, like NITC's card images) -->
+                <div class="hero-balance-card">
+                    <div class="balance-row">
+                        <span class="balance-label">Available Balance</span>
+                        <span class="ledger-badge">
+                            <span style="font-size:8px;">●</span> Zero-Variance Ledger
+                        </span>
+                    </div>
+                    <div class="balance-amount" id="dash-balance">৳ 100,000.00</div>
+                    <div class="balance-actions">
+                        <button class="bal-action" onclick="navigateTo('send')">↗ Send Money</button>
+                        <button class="bal-action" onclick="navigateTo('requests')">↙ Request Funds</button>
+                        <button class="bal-action" onclick="navigateTo('groups')">👥 Group Collect</button>
+                    </div>
+                </div>
+
+                <!-- 2×2 action hub grid (.card-holder with .card-register equiv) -->
+                <div class="card-holder">
+                    <div class="hub-card" onclick="navigateTo('send')">
+                        <div class="hub-icon">↗️</div>
+                        <div>
+                            <div class="hub-text-title">Send Money</div>
+                            <div class="hub-text-desc">Atomic idempotent P2P transfers with Safe Send risk confirmation.</div>
+                        </div>
+                    </div>
+                    <div class="hub-card" onclick="navigateTo('requests')">
+                        <div class="hub-icon">📥</div>
+                        <div>
+                            <div class="hub-text-title">Money Requests</div>
+                            <div class="hub-text-desc">Request peer funds with partial installment payment support.</div>
+                        </div>
+                    </div>
+                    <div class="hub-card" onclick="navigateTo('activity')">
+                        <div class="hub-icon">📜</div>
+                        <div>
+                            <div class="hub-text-title">Activity &amp; Receipts</div>
+                            <div class="hub-text-desc">Immutable 10-step timelines and zero-variance ledger proofs.</div>
+                        </div>
+                    </div>
+                    <div class="hub-card" onclick="navigateTo('trust-lab')">
+                        <div class="hub-icon">🧪</div>
+                        <div>
+                            <div class="hub-text-title">Trust Lab Console</div>
+                            <div class="hub-text-desc">Live failure simulation: duplicate, concurrency, and ledger audit.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom 2-col: pending + recent -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">Pending Requests</span>
+                            <button class="btn btn-secondary btn-sm" onclick="navigateTo('requests')">View All</button>
+                        </div>
+                        <div id="dash-pending"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">Recent Activity</span>
+                            <button class="btn btn-secondary btn-sm" onclick="navigateTo('activity')">View All</button>
+                        </div>
+                        <div id="dash-recent"></div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- ====== SEND MONEY (3-step flow) ====== -->
+            <section id="section-send" class="app-view" style="display:none;">
+
+                <!-- Step progress circles (.indicator-holder) -->
+                <div class="indicator-holder">
+                    <div class="indicator-step active" id="step1-ind">
+                        <div class="indicator-div">1</div>
+                        <div class="step-label">Recipient</div>
+                    </div>
+                    <div class="horizontalline" id="line1"></div>
+                    <div class="indicator-step" id="step2-ind">
+                        <div class="indicator-div">2</div>
+                        <div class="step-label">Amount &amp; Risk</div>
+                    </div>
+                    <div class="horizontalline" id="line2"></div>
+                    <div class="indicator-step" id="step3-ind">
+                        <div class="indicator-div">3</div>
+                        <div class="step-label">Confirm</div>
+                    </div>
+                </div>
+
+                <div class="card" style="max-width:640px;margin:0 auto;">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Send Money</div>
+                            <div class="font-sm text-body mt-4">Atomic Safe Send with deterministic Risk Shield.</div>
+                        </div>
+                    </div>
+
+                    <div id="send-alert" class="alert alert-danger" style="display:none;"></div>
+
+                    <!-- Step 1: Recipient -->
+                    <div id="step1">
+                        <div class="form-group">
+                            <label class="form-label">Recipient Account Number or Username</label>
+                            <div class="input-wrap">
+                                <span class="input-icon">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                </span>
+                                <input type="text" id="send-recipient" class="tf-input" placeholder="e.g. ACC-100002 or tasir" oninput="lookupRecipient()">
+                            </div>
+                            <div id="recipient-preview" class="font-sm text-primary mt-8" style="font-weight:700;min-height:18px;"></div>
+                        </div>
+                        <div class="mb-16">
+                            <div class="font-xs text-muted mb-8" style="text-transform:uppercase;font-weight:700;letter-spacing:.6px;">Quick select:</div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <button class="btn btn-secondary btn-sm" onclick="selectRecipient('ACC-100002','Tasir Hossain (ACC-100002)')">Tasir</button>
+                                <button class="btn btn-secondary btn-sm" onclick="selectRecipient('ACC-100003','Saif Rahman (ACC-100003)')">Saif</button>
+                            </div>
+                        </div>
+                        <div class="flex-end"><button class="btn btn-primary" onclick="goStep(2)">Next: Amount &amp; Risk →</button></div>
+                    </div>
+
+                    <!-- Step 2: Amount + Risk preview -->
+                    <div id="step2" style="display:none;">
+                        <div class="form-group">
+                            <label class="form-label">Transfer Amount (BDT)</label>
+                            <div class="input-wrap">
+                                <span class="input-icon" style="font-size:14px;font-weight:700;color:var(--primary);">৳</span>
+                                <input type="number" id="send-amount" class="tf-input" placeholder="0.00" step="0.01" min="1" oninput="updateRisk()">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Purpose / Note</label>
+                            <input type="text" id="send-purpose" class="tf-input no-icon" placeholder="e.g. Dinner, Project materials, Rent">
+                        </div>
+                        <div class="risk-box">
+                            <div class="risk-box-header">
+                                <span class="risk-box-label">🛡️ Risk Shield Assessment</span>
+                                <span id="risk-badge" class="badge badge-info">Score: 30 (LOW)</span>
+                            </div>
+                            <div class="risk-reasons" id="risk-reasons">• New recipient (+30 pts)</div>
+                        </div>
+                        <div class="flex-between flex-end" style="margin-top:20px;">
+                            <button class="btn btn-outline" onclick="goStep(1)">← Back</button>
+                            <button class="btn btn-primary" onclick="goStep(3)">Review &amp; Confirm →</button>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Review + execute -->
+                    <div id="step3" style="display:none;">
+                        <div class="review-box">
+                            <div class="review-row"><span class="review-key">Recipient</span><span class="review-val" id="review-recipient">—</span></div>
+                            <div class="review-row"><span class="review-key">Amount</span><strong class="review-val" id="review-amount" style="font-size:17px;color:var(--primary);">—</strong></div>
+                            <div class="review-row"><span class="review-key">Purpose</span><span class="review-val" id="review-purpose">—</span></div>
+                            <div class="review-row"><span class="review-key">Fee</span><span class="review-val" style="color:var(--success);">৳ 0.00 (Zero Fee)</span></div>
+                        </div>
+                        <div id="stepup-box" class="stepup-box" style="display:none;">
+                            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                                <input type="checkbox" id="high-risk-confirm" style="margin-top:2px;flex-shrink:0;">
+                                <span><strong>Step-Up Required:</strong> I acknowledge the Risk Shield signals and confirm this transfer is intentional.</span>
+                            </label>
+                        </div>
+                        <div class="flex-between" style="margin-top:20px;">
+                            <button class="btn btn-outline" onclick="goStep(2)">← Back</button>
+                            <button id="btn-execute" class="btn btn-primary" onclick="executeSend()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                Authorize &amp; Settle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ====== MONEY REQUESTS ====== -->
+            <section id="section-requests" class="app-view" style="display:none;">
+                <div class="section-head flex-between">
+                    <div>
+                        <h2 class="page-title">Money Requests</h2>
+                        <div class="page-sub">Request peer funds or settle incoming dues.</div>
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal('modal-create-req')">+ Create Request</button>
+                </div>
+                <div class="card">
+                    <div style="display:flex;gap:10px;margin-bottom:18px;border-bottom:1px solid var(--border-subtle);padding-bottom:12px;">
+                        <button class="btn btn-secondary btn-sm" id="tab-incoming" onclick="setRequestTab('incoming')">Incoming</button>
+                        <button class="btn btn-outline btn-sm"   id="tab-outgoing" onclick="setRequestTab('outgoing')">Outgoing</button>
+                    </div>
+                    <div id="requests-list"></div>
+                </div>
+            </section>
+
+            <!-- ====== GROUP COLLECT ====== -->
+            <section id="section-groups" class="app-view" style="display:none;">
+                <div class="section-head flex-between">
+                    <div>
+                        <h2 class="page-title">Group Collect</h2>
+                        <div class="page-sub">Pool shared expenses with atomic contribution limits.</div>
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal('modal-create-group')">+ New Collection</button>
+                </div>
+                <div class="group-grid" id="groups-grid"></div>
+            </section>
+
+            <!-- ====== ACTIVITY ====== -->
+            <section id="section-activity" class="app-view" style="display:none;">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Transaction History</div>
+                            <div class="font-sm text-body mt-4">Append-only ledger journal with zero-variance proofs.</div>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="nitc-table">
+                            <thead>
+                                <tr>
+                                    <th>Txn Number</th>
+                                    <th>Date / Time</th>
+                                    <th>Counterparty</th>
+                                    <th>Purpose</th>
+                                    <th>Status</th>
+                                    <th>Amount</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="txn-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="flex-between" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-subtle);">
+                        <span id="txn-page-label" class="font-sm text-muted">Page 1</span>
+                        <div style="display:flex;gap:8px;">
+                            <button id="btn-prev" class="btn btn-outline btn-sm" onclick="changePage(-1)" disabled>Previous</button>
+                            <button id="btn-next" class="btn btn-outline btn-sm" onclick="changePage(+1)">Next</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ====== RECOVERY CENTER ====== -->
+            <section id="section-recovery" class="app-view" style="display:none;">
+                <div class="section-head flex-between">
+                    <div>
+                        <h2 class="page-title">Recovery Center</h2>
+                        <div class="page-sub">Self-service diagnostic investigation for stuck or disputed transactions.</div>
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal('modal-file-recovery')">+ File Case</button>
+                </div>
+                <div class="card">
+                    <div class="card-header"><span class="card-title">Recovery Cases</span></div>
+                    <div id="recovery-list"></div>
+                </div>
+            </section>
+
+            <!-- ====== TRUST LAB ====== -->
+            <section id="section-trust-lab" class="app-view" style="display:none;">
+                <div class="lab-hero">
+                    <div>
+                        <span class="badge badge-info" style="background:rgba(255,255,255,.18);color:#fff;border-color:rgba(255,255,255,.25);margin-bottom:10px;">ADMIN / JUDGE CONSOLE</span>
+                        <h2 style="font-size:22px;font-weight:700;margin-bottom:6px;">Trust Lab — Failure &amp; Concurrency Simulator</h2>
+                        <div style="font-size:13px;color:rgba(255,255,255,.85);">Execute live backend tests against PostgreSQL to demonstrate financial safety.</div>
+                    </div>
+                    <button class="btn btn-primary" style="background:#00B894;box-shadow:0 4px 14px rgba(0,184,148,.35);white-space:nowrap;" onclick="runAllTests()">▶ Run All Tests</button>
+                </div>
+
+                <div class="lab-grid">
+                    <!-- Test 1 -->
+                    <div class="card">
+                        <div class="flex-between mb-8">
+                            <div>
+                                <div style="font-size:16px;font-weight:700;color:var(--primary);">1. Duplicate Request Test</div>
+                                <div class="font-xs text-muted mt-4">5 identical requests, same idempotency key.</div>
+                            </div>
+                            <span id="st-dup" class="badge badge-neutral">Ready</span>
+                        </div>
+                        <div id="res-dup" class="risk-box" style="min-height:60px;margin-bottom:14px;font-size:12px;color:var(--text-body);">Expected: Exactly 1 debit, 4 duplicates blocked.</div>
+                        <button class="btn btn-secondary" style="width:100%;" onclick="runDup()">Run Duplicate Test</button>
+                    </div>
+
+                    <!-- Test 2 -->
+                    <div class="card">
+                        <div class="flex-between mb-8">
+                            <div>
+                                <div style="font-size:16px;font-weight:700;color:var(--primary);">2. Concurrent Spend Test</div>
+                                <div class="font-xs text-muted mt-4">Two simultaneous ৳700 transfers on ৳1,000 balance.</div>
+                            </div>
+                            <span id="st-con" class="badge badge-neutral">Ready</span>
+                        </div>
+                        <div id="res-con" class="risk-box" style="min-height:60px;margin-bottom:14px;font-size:12px;color:var(--text-body);">Expected: 1 succeeds, 1 rejected — 0 overdraft.</div>
+                        <button class="btn btn-secondary" style="width:100%;" onclick="runCon()">Run Concurrency Test</button>
+                    </div>
+
+                    <!-- Test 3 -->
+                    <div class="card">
+                        <div class="flex-between mb-8">
+                            <div>
+                                <div style="font-size:16px;font-weight:700;color:var(--primary);">3. Network Retry Test</div>
+                                <div class="font-xs text-muted mt-4">Client drops after commit, retries with same key.</div>
+                            </div>
+                            <span id="st-ret" class="badge badge-neutral">Ready</span>
+                        </div>
+                        <div id="res-ret" class="risk-box" style="min-height:60px;margin-bottom:14px;font-size:12px;color:var(--text-body);">Expected: Original committed state returned, 0 double debit.</div>
+                        <button class="btn btn-secondary" style="width:100%;" onclick="runRet()">Run Retry Test</button>
+                    </div>
+
+                    <!-- Test 4 (Ledger Audit) -->
+                    <div class="card">
+                        <div class="flex-between mb-8">
+                            <div>
+                                <div style="font-size:16px;font-weight:700;color:var(--primary);">4. System Ledger Integrity Audit</div>
+                                <div class="font-xs text-muted mt-4">Global Σ Debits == Σ Credits across DB.</div>
+                            </div>
+                            <span id="st-aud" class="badge badge-neutral">Ready</span>
+                        </div>
+                        <div id="res-aud" class="risk-box" style="min-height:60px;margin-bottom:14px;font-size:12px;color:var(--text-body);">Expected: Zero Variance = 0.00 BDT confirmed.</div>
+                        <button class="btn btn-secondary" style="width:100%;" onclick="runAud()">Run Ledger Audit</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ====== PROFILE ====== -->
+            <section id="section-profile" class="app-view" style="display:none;">
+                <div class="card" style="max-width:600px;margin:0 auto;">
+                    <div class="card-header"><span class="card-title">My Wallet Profile</span></div>
+                    <div id="profile-body"></div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+</div>
+
+
+<!-- ==========================================================================
+     MODALS
+     ========================================================================== -->
+
+<!-- 1. Transaction Detail / Trust Receipt -->
+<div id="modal-txn" class="modal-backdrop" style="display:none;" onclick="backdropClose(event,'modal-txn')">
+    <div class="modal-dialog" style="max-width:660px;">
+        <div class="modal-header">
+            <span class="modal-title">Trust Receipt &amp; Audit Proof</span>
+            <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-txn')">✕ Close</button>
+        </div>
+        <div id="modal-txn-body"><div class="empty-state">Loading receipt...</div></div>
+    </div>
+</div>
+
+<!-- 2. Transfer Success Confirmation (.form-confirm) -->
+<div id="modal-success" class="modal-backdrop" style="display:none;">
+    <div class="modal-dialog" style="max-width:460px;">
+        <div class="success-view">
+            <div class="success-circle">✓</div>
+            <div class="success-title">Transfer Complete</div>
+            <div class="success-subtitle" id="success-msg">Your transaction was committed with zero variance.</div>
+            <div class="success-actions">
+                <button class="btn btn-primary" onclick="newTransfer()">+ New Transfer</button>
+                <button class="btn btn-secondary" onclick="closeModal('modal-success');navigateTo('dashboard');">Done</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 3. Create Money Request -->
+<div id="modal-create-req" class="modal-backdrop" style="display:none;" onclick="backdropClose(event,'modal-create-req')">
+    <div class="modal-dialog" style="max-width:500px;">
+        <div class="modal-header">
+            <span class="modal-title">Create Money Request</span>
+            <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-create-req')">✕</button>
+        </div>
+        <form onsubmit="submitCreateRequest(event)">
+            <div class="form-group">
+                <label class="form-label">Payer Account Number or Username</label>
+                <input id="req-payer" class="tf-input no-icon" placeholder="e.g. ACC-100002 or tasir" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Amount (BDT)</label>
+                <input type="number" id="req-amount" class="tf-input no-icon" placeholder="0.00" step="0.01" min="1" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Note</label>
+                <input id="req-note" class="tf-input no-icon" placeholder="e.g. Group dinner, project share" required>
+            </div>
+            <div class="flex-end">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modal-create-req')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Send Request</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 4. Pay Money Request -->
+<div id="modal-pay-req" class="modal-backdrop" style="display:none;" onclick="backdropClose(event,'modal-pay-req')">
+    <div class="modal-dialog" style="max-width:460px;">
+        <div class="modal-header">
+            <span class="modal-title">Settle Money Request</span>
+            <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-pay-req')">✕</button>
+        </div>
+        <div id="pay-req-details" class="review-box mb-16"></div>
+        <form onsubmit="submitPayRequest(event)">
+            <input type="hidden" id="pay-req-id">
+            <div class="form-group">
+                <label class="form-label">Payment Amount (BDT)</label>
+                <input type="number" id="pay-req-amount" class="tf-input no-icon" step="0.01" min="1" required>
+            </div>
+            <div class="flex-end">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modal-pay-req')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Authorize Payment</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 5. File Recovery Case -->
+<div id="modal-file-recovery" class="modal-backdrop" style="display:none;" onclick="backdropClose(event,'modal-file-recovery')">
+    <div class="modal-dialog" style="max-width:500px;">
+        <div class="modal-header">
+            <span class="modal-title">File Recovery Case</span>
+            <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-file-recovery')">✕</button>
+        </div>
+        <form onsubmit="submitRecoveryCase(event)">
+            <div class="form-group">
+                <label class="form-label">Transaction ID (UUID)</label>
+                <input id="rec-txn-id" class="tf-input no-icon" placeholder="Paste transaction GUID..." required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Issue Type</label>
+                <select id="rec-issue" class="tf-input" style="padding-left:14px;">
+                    <option value="MONEY_DEDUCTED_NOT_RECEIVED">Money deducted but recipient did not receive</option>
+                    <option value="TRANSACTION_STUCK">Transaction stuck in processing</option>
+                    <option value="UNRECOGNIZED_TRANSACTION">Unrecognized transaction</option>
+                    <option value="DUPLICATE_ATTEMPT">Duplicate attempt</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Description</label>
+                <textarea id="rec-desc" class="tf-input no-icon" style="height:80px;padding-top:12px;" required placeholder="Describe what happened..."></textarea>
+            </div>
+            <div class="flex-end">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modal-file-recovery')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Submit for Investigation</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 6. Create Group Collection -->
+<div id="modal-create-group" class="modal-backdrop" style="display:none;" onclick="backdropClose(event,'modal-create-group')">
+    <div class="modal-dialog" style="max-width:500px;">
+        <div class="modal-header">
+            <span class="modal-title">Create Group Collection</span>
+            <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-create-group')">✕</button>
+        </div>
+        <form onsubmit="submitCreateGroup(event)">
+            <div class="form-group">
+                <label class="form-label">Collection Title</label>
+                <input id="grp-title" class="tf-input no-icon" placeholder="e.g. Saint Martin Tour Split" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Target Amount (BDT)</label>
+                <input type="number" id="grp-target" class="tf-input no-icon" placeholder="4000.00" step="0.01" min="1" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Member Usernames (comma-separated)</label>
+                <input id="grp-members" class="tf-input no-icon" placeholder="tasir, saif">
+            </div>
+            <div class="flex-end">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modal-create-group')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Launch Collection</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

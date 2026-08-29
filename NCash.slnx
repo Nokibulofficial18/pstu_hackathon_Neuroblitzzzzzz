@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NCash.Application/NCash.Application.csproj" />
+    <Project Path="src/NCash.Domain/NCash.Domain.csproj" />
+    <Project Path="src/NCash.Infrastructure/NCash.Infrastructure.csproj" />
+    <Project Path="src/NCash.Web/NCash.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NCash.Tests/NCash.Tests.csproj" />
+  </Folder>
+</Solution>

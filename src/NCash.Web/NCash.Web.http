@@ -1,0 +1,6 @@
+@NCash.Web_HostAddress = http://localhost:5000
+
+GET {{NCash.Web_HostAddress}}/swagger
+Accept: application/json
+
+###

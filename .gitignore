@@ -1,0 +1,200 @@
+# ===========================================================================
+# TrustFlow (N-Cash) — .gitignore
+# Stack: .NET 10 / ASP.NET Core / PostgreSQL / Vanilla HTML+CSS+JS
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# ⚠️  SECURITY — NEVER COMMIT CREDENTIALS
+# The real appsettings files contain DB passwords and JWT secrets.
+# Use environment variables or user secrets for local/prod config.
+# ---------------------------------------------------------------------------
+# Uncomment the line below ONLY if you store real secrets in appsettings.json.
+# For this hackathon repo the file is intentionally kept (judges need it).
+appsettings.json
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+
+# ---------------------------------------------------------------------------
+# .NET BUILD ARTIFACTS
+# ---------------------------------------------------------------------------
+
+## Build output directories (every project)
+[Bb]in/
+[Oo]bj/
+
+## Publish output
+[Pp]ublish/
+publish/
+
+## NuGet packages restored locally
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+nuget.config.local
+
+## NuGet lock files (these are fine to commit if you use lock-mode)
+# packages.lock.json
+
+## MSBuild binary logs
+*.binlog
+
+## MSBuild incremental build caches
+*.Up2Date
+*.cache
+
+## Generated source files
+*.AssemblyInfo.cs
+*.GlobalUsings.g.cs
+*.AssemblyInfoInputs.cache
+*.genruntimeconfig.cache
+*.GeneratedMSBuildEditorConfig.editorconfig
+*.FileListAbsolute.txt
+*.CoreCompileInputs.cache
+*.AssemblyReference.cache
+
+## Test results
+TestResults/
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+coverage-report/
+
+## Code coverage artifacts
+**/.coverage/
+
+
+# ---------------------------------------------------------------------------
+# VISUAL STUDIO / RIDER / VS CODE IDE FILES
+# ---------------------------------------------------------------------------
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+## Rider
+.idea/
+*.sln.iml
+
+## VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+## JetBrains
+*.DotSettings.user
+
+## Resharper
+_ReSharper*/
+*.ReSharper
+
+## NCrunch
+*.ncrunch*
+_NCrunch_*/
+
+## SonarQube / Coverlet
+.sonarqube/
+
+
+# ---------------------------------------------------------------------------
+# ASP.NET CORE — RUNTIME & SECRETS
+# ---------------------------------------------------------------------------
+
+## dotnet user secrets
+**/secrets.json
+%APPDATA%/Microsoft/UserSecrets/
+
+## HTTPS dev certificate (Windows)
+*.pfx
+
+## Entity Framework migrations snapshot temp files (keep actual migration files)
+# Migrations/ — keep, these are source-controlled
+
+## Static file publishing manifest
+bundleconfig.json.bak
+
+## Hot reload temp files
+.hotreload/
+
+
+# ---------------------------------------------------------------------------
+# OPERATING SYSTEM NOISE
+# ---------------------------------------------------------------------------
+
+## Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+## macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+## Linux
+*~
+
+
+# ---------------------------------------------------------------------------
+# LOGS & DIAGNOSTICS
+# ---------------------------------------------------------------------------
+*.log
+logs/
+*.pid
+*.seed
+
+
+# ---------------------------------------------------------------------------
+# FRONTEND (wwwroot)
+# Static HTML/CSS/JS are source files — keep them all.
+# Only exclude generated/minified build artefacts if you add a build step.
+# ---------------------------------------------------------------------------
+
+## If you add a bundler (Webpack/Vite/esbuild) in the future:
+# wwwroot/dist/
+# wwwroot/build/
+# node_modules/
+# .parcel-cache/
+# .cache/
+
+
+# ---------------------------------------------------------------------------
+# DOCKER (future use)
+# ---------------------------------------------------------------------------
+.dockerignore.local
+docker-compose.override.yml
+
+
+# ---------------------------------------------------------------------------
+# KEEP THESE (explicit allow-list overrides)
+# ---------------------------------------------------------------------------
+
+## Solution and project files
+!NCash.slnx
+!*.csproj
+
+## Source configuration (kept intentionally for hackathon — change for prod)
+!appsettings.json
+!appsettings.Development.json
+
+## Hackathon brief documents
+!*.pdf
+!*.txt
+
+## Documentation
+!docs/
+!README.md
