@@ -20,6 +20,7 @@ public interface ITransactionRepository
     Task<Transaction?> GetByNumberAsync(string transactionNumber, CancellationToken cancellationToken = default);
     Task<Transaction?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default);
     Task<List<Transaction>> GetAccountHistoryAsync(Guid accountId, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default);
+    Task<List<Transaction>> GetAllTransactionsAsync(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default);
     Task<int> GetRecentTransactionCountAsync(Guid senderAccountId, TimeSpan window, CancellationToken cancellationToken = default);
     Task<bool> HasTransactedWithAsync(Guid senderAccountId, Guid receiverAccountId, CancellationToken cancellationToken = default);
     Task AddAsync(Transaction transaction, CancellationToken cancellationToken = default);

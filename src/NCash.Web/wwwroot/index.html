@@ -75,6 +75,7 @@
                     <button class="btn btn-secondary btn-xs" onclick="quickLogin('rahim')">rahim</button>
                     <button class="btn btn-secondary btn-xs" onclick="quickLogin('tasir')">tasir</button>
                     <button class="btn btn-secondary btn-xs" onclick="quickLogin('saif')">saif</button>
+                    <button class="btn btn-primary btn-xs" onclick="quickLogin('auditor')">🛡️ auditor (Auditor)</button>
                 </div>
             </div>
         </div>
@@ -228,7 +229,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                 <span class="nav-label">Recovery</span>
             </a>
-            <a href="#trust-lab"    class="nav-link" data-nav="trust-lab"    title="Trust Lab">
+            <a href="#trust-lab"    class="nav-link" data-nav="trust-lab" id="nav-trust-lab" title="Trust Lab (Auditors Only)" style="display:none;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2v7.31L4 18h16l-6-8.69V2"/><line x1="8" y1="2" x2="16" y2="2"/></svg>
                 <span class="nav-label">Trust Lab</span>
             </a>
@@ -287,11 +288,11 @@
                             <div class="hub-text-desc">Immutable 10-step timelines and zero-variance ledger proofs.</div>
                         </div>
                     </div>
-                    <div class="hub-card" onclick="navigateTo('trust-lab')">
-                        <div class="hub-icon">🧪</div>
+                    <div class="hub-card" onclick="navigateTo('groups')">
+                        <div class="hub-icon">👥</div>
                         <div>
-                            <div class="hub-text-title">Trust Lab Console</div>
-                            <div class="hub-text-desc">Live failure simulation: duplicate, concurrency, and ledger audit.</div>
+                            <div class="hub-text-title">Group Collect</div>
+                            <div class="hub-text-desc">Crowdfund and split bills with automated member contribution tracking.</div>
                         </div>
                     </div>
                 </div>
@@ -741,6 +742,32 @@
             <div class="flex-end">
                 <button type="button" class="btn btn-outline" onclick="closeModal('modal-pay-group')">Cancel</button>
                 <button type="submit" class="btn btn-primary">Authorize Contribution</button>
+            </div>
+        </form>
+<!-- 8. Auditor Resolve Recovery Case Modal -->
+<div id="modal-resolve-case" class="modal-backdrop" style="display:none;" onclick="backdropClose(event,'modal-resolve-case')">
+    <div class="modal-dialog" style="max-width:480px;">
+        <div class="modal-header">
+            <span class="modal-title">Resolve Recovery Case (Auditor Mode)</span>
+            <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-resolve-case')">✕</button>
+        </div>
+        <form onsubmit="submitResolveCase(event)">
+            <input type="hidden" id="resolve-case-id">
+            <div class="form-group">
+                <label class="form-label">Resolution Decision</label>
+                <select id="resolve-decision" class="tf-input" style="padding-left:14px;">
+                    <option value="Resolved">Accept & Mark Resolved</option>
+                    <option value="Rejected">Reject Dispute</option>
+                    <option value="Closed">Close Case</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Auditor Resolution Note</label>
+                <textarea id="resolve-note" class="tf-input no-icon" style="height:80px;padding-top:12px;" placeholder="Explain audit findings, ledger proof, or actions taken..." required></textarea>
+            </div>
+            <div class="flex-end">
+                <button type="button" class="btn btn-outline" onclick="closeModal('modal-resolve-case')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Commit Resolution</button>
             </div>
         </form>
     </div>

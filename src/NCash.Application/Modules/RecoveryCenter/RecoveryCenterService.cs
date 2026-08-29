@@ -27,7 +27,13 @@ public record RecoveryCaseDetailDto(
     string? Resolution,
     string AuditDiagnosis,
     DateTime CreatedAtUtc,
-    DateTime? ResolvedAtUtc);
+    DateTime? ResolvedAtUtc)
+{
+    public Guid Id => CaseId;
+    public string Status => RecoveryStatus;
+    public DateTime CreatedAt => CreatedAtUtc;
+    public Guid TxnId => TransactionId;
+}
 
 public record ResolveRecoveryCaseDto(
     DisputeStatus Status,

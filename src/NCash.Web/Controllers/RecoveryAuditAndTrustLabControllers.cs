@@ -49,6 +49,12 @@ public class RecoveryController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<List<RecoveryCaseDetailDto>>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetMyRecoveryCases(CancellationToken cancellationToken)
     {
+        if (User.IsInRole("Admin") || User.IsInRole("Auditor"))
+        {
+            var allResult = await _recoveryService.GetAllRecoveryCasesAsync(cancellationToken);
+            return Ok(ApiResponse<List<RecoveryCaseDetailDto>>.Ok(allResult));
+        }
+
         var result = await _recoveryService.GetUserRecoveryCasesAsync(CurrentUserId, cancellationToken);
         return Ok(ApiResponse<List<RecoveryCaseDetailDto>>.Ok(result));
     }
@@ -119,7 +125,7 @@ public class AuditController : BaseApiController
     }
 }
 
-[Authorize]
+[Authorize(Roles = "Auditor,Admin")]
 [Route("api/trust-lab")]
 public class TrustLabController : BaseApiController
 {

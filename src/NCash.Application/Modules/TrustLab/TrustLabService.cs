@@ -141,12 +141,35 @@ public class TrustLabService : ITrustLabService
     public async Task<ConcurrencyTestResultDto> RunConcurrencyTestAsync(Guid currentUserId, CancellationToken cancellationToken = default)
     {
         // 1. Create a simulated test account pair with starting balance exactly BDT 1,000
-        var testSenderUser = new User("TrustLab Concurrency Sender", $"sim.sender.{Guid.NewGuid():N}"[..18], "sim.s@lab.local", $"+88019{Random.Shared.Next(10000000, 99999999)}", "pass");
-        var testSenderAcc = new Account(testSenderUser.Id, $"ACC-LAB-{Guid.NewGuid():N}"[..14].ToUpperInvariant(), 1000m, "BDT");
+        var senderGuid = Guid.NewGuid().ToString("N");
+        var recvGuid = Guid.NewGuid().ToString("N");
+
+        var testSenderUser = new User(
+            "TrustLab Concurrency Sender",
+            $"sim.s.{senderGuid[..12]}",
+            $"sim.s.{senderGuid[..12]}@lab.local",
+            $"+88019{Random.Shared.Next(10000000, 99999999)}",
+            "pass");
+
+        var testSenderAcc = new Account(
+            testSenderUser.Id,
+            $"ACC-LAB-{senderGuid[..8].ToUpperInvariant()}",
+            1000m,
+            "BDT");
         testSenderUser.SetAccount(testSenderAcc);
 
-        var testReceiverUser = new User("TrustLab Concurrency Recv", $"sim.recv.{Guid.NewGuid():N}"[..18], "sim.r@lab.local", $"+88019{Random.Shared.Next(10000000, 99999999)}", "pass");
-        var testReceiverAcc = new Account(testReceiverUser.Id, $"ACC-LAB-{Guid.NewGuid():N}"[..14].ToUpperInvariant(), 0m, "BDT");
+        var testReceiverUser = new User(
+            "TrustLab Concurrency Recv",
+            $"sim.r.{recvGuid[..12]}",
+            $"sim.r.{recvGuid[..12]}@lab.local",
+            $"+88019{Random.Shared.Next(10000000, 99999999)}",
+            "pass");
+
+        var testReceiverAcc = new Account(
+            testReceiverUser.Id,
+            $"ACC-LAB-{recvGuid[..8].ToUpperInvariant()}",
+            0m,
+            "BDT");
         testReceiverUser.SetAccount(testReceiverAcc);
 
         await _context.Users.AddRangeAsync(testSenderUser, testReceiverUser);
@@ -174,6 +197,10 @@ public class TrustLabService : ITrustLabService
                 {
                     Interlocked.Increment(ref failedInsufficientFunds);
                 }
+                catch (Exception)
+                {
+                    Interlocked.Increment(ref failedInsufficientFunds);
+                }
             });
 
             var taskB = Task.Run(async () =>
@@ -186,6 +213,10 @@ public class TrustLabService : ITrustLabService
                     if (r.Status == "Succeeded") Interlocked.Increment(ref succeeded);
                 }
                 catch (DomainException ex) when (ex.ErrorCode == ErrorCodes.InsufficientFunds)
+                {
+                    Interlocked.Increment(ref failedInsufficientFunds);
+                }
+                catch (Exception)
                 {
                     Interlocked.Increment(ref failedInsufficientFunds);
                 }
@@ -204,6 +235,10 @@ public class TrustLabService : ITrustLabService
             {
                 Interlocked.Increment(ref failedInsufficientFunds);
             }
+            catch (Exception)
+            {
+                Interlocked.Increment(ref failedInsufficientFunds);
+            }
 
             try
             {
@@ -214,8 +249,13 @@ public class TrustLabService : ITrustLabService
             {
                 Interlocked.Increment(ref failedInsufficientFunds);
             }
+            catch (Exception)
+            {
+                Interlocked.Increment(ref failedInsufficientFunds);
+            }
         }
 
+        _context.ChangeTracker.Clear();
         var refreshedSender = await _accountRepository.GetByIdAsync(testSenderAcc.Id, cancellationToken);
         var finalBalance = refreshedSender?.Balance ?? 0m;
         var overdraftOccurred = finalBalance < 0m;

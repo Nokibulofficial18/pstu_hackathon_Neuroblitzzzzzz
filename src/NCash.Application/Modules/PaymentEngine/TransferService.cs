@@ -153,7 +153,8 @@ public class TransferService : ITransferService
         if (currentUserAccount == null)
             throw new DomainException(ErrorCodes.AccountNotFound, "User account not found.");
 
-        if (txn.SenderAccountId != currentUserAccount.Id && txn.ReceiverAccountId != currentUserAccount.Id)
+        var isAuditor = currentUserAccount.User?.Role == "Auditor" || currentUserAccount.User?.Role == "Admin";
+        if (!isAuditor && txn.SenderAccountId != currentUserAccount.Id && txn.ReceiverAccountId != currentUserAccount.Id)
         {
             throw new DomainException(ErrorCodes.UnauthorizedAccess, "You are not authorized to view this transaction.", 403);
         }
@@ -170,6 +171,13 @@ public class TransferService : ITransferService
         var account = await _accountRepository.GetByUserIdAsync(currentUserId, cancellationToken);
         if (account == null)
             throw new DomainException(ErrorCodes.AccountNotFound, "User account not found.");
+
+        var isAuditor = account.User?.Role == "Auditor" || account.User?.Role == "Admin";
+        if (isAuditor)
+        {
+            var allTransactions = await _transactionRepository.GetAllTransactionsAsync(page, pageSize, cancellationToken);
+            return allTransactions.Select(MapToDetailDto).ToList();
+        }
 
         var transactions = await _transactionRepository.GetAccountHistoryAsync(account.Id, page, pageSize, cancellationToken);
         return transactions.Select(MapToDetailDto).ToList();

@@ -61,6 +61,18 @@ public class TransactionRepository : ITransactionRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<List<Transaction>> GetAllTransactionsAsync(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
+    {
+        return await _context.Transactions
+            .Include(t => t.SenderAccount).ThenInclude(a => a!.User)
+            .Include(t => t.ReceiverAccount).ThenInclude(a => a.User)
+            .Include(t => t.RiskSignals)
+            .OrderByDescending(t => t.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<int> GetRecentTransactionCountAsync(Guid senderAccountId, TimeSpan window, CancellationToken cancellationToken = default)
     {
         var cutoff = DateTime.UtcNow.Subtract(window);
