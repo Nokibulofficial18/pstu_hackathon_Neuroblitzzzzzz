@@ -211,7 +211,7 @@ public class MoneyRequestService : IMoneyRequestService
                 throw new DomainException(ErrorCodes.UnauthorizedAccess, "You are not authorized to pay this request.", 403);
 
             if (request.Status == MoneyRequestStatus.Paid || request.Status == MoneyRequestStatus.Cancelled || request.Status == MoneyRequestStatus.Rejected)
-                throw new DomainException(ErrorCodes.InvalidTransactionState, $"This money request cannot be paid. Status: {request.Status}.");
+                throw new DomainException(ErrorCodes.MoneyRequestAlreadyClosed, $"This money request cannot be paid. Status: {request.Status}.");
 
             if (request.ExpiresAtUtc.HasValue && request.ExpiresAtUtc.Value < DateTime.UtcNow)
                 throw new DomainException(ErrorCodes.MoneyRequestExpired, "This money request has expired.");

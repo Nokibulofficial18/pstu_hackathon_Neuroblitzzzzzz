@@ -1,4 +1,4 @@
-# Security Policy & Incident Remediation Guide — NCash (TrustFlow)
+# Security Policy & Incident Remediation Guide — N-Cash
 
 ## 1. Overview & Threat Model
 NCash is a failure-safe financial ledger and digital money movement engine. Financial applications require zero tolerance for secret exposure, double-spending, race conditions, parameter tampering, and unauthorized state transitions.

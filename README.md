@@ -17,19 +17,19 @@ N-Cash is structured as a clean, decoupled **Modular Monolith** using **ASP.NET 
 ```
 NCash/
 ├── src/
-│   ├── TrustFlow.Domain/                # Pure domain entities, Value objects, Enums, Exceptions
+│   ├── NCash.Domain/                    # Pure domain entities, Value objects, Enums, Exceptions
 │   │   ├── Common/                      # BaseEntity, DomainException, Result, SystemConstants
 │   │   ├── Entities/                    # User, Account, Transaction, LedgerEntry, TransactionEvent,
 │   │   │                                # MoneyRequest, RiskSignal, DisputeCase, IdempotencyRecord
 │   │   └── Enums/                       # TransactionStatus, LedgerDirection, RiskLevel, DisputeStatus
 │   │
-│   ├── TrustFlow.Infrastructure/        # EF Core DbContext, PostgreSQL configs, Pessimistic Row Locking
-│   │   ├── Persistence/                 # TrustFlowDbContext, EntityConfigurations
+│   ├── NCash.Infrastructure/            # EF Core DbContext, PostgreSQL configs, Pessimistic Row Locking
+│   │   ├── Persistence/                 # NCashDbContext, EntityConfigurations
 │   │   ├── Repositories/                # AccountRepository (SELECT FOR UPDATE), TransactionRepository
 │   │   ├── Security/                    # BCrypt PasswordHasher, JwtTokenGenerator
 │   │   └── Seed/                        # Controlled N-Cash System Treasury Issuance & Demo accounts
 │   │
-│   ├── TrustFlow.Application/           # Business orchestration, isolated engines, DTOs, contracts
+│   ├── NCash.Application/               # Business orchestration, isolated engines, DTOs, contracts
 │   │   ├── Contracts/                   # IApplicationDbContext, IRepositories, ISecurityContracts
 │   │   └── Modules/
 │   │       ├── PaymentEngine/           # IPaymentEngine (ISOLATED ENGINE), ITransferService
@@ -43,14 +43,14 @@ NCash/
 │   │       ├── Audit/                   # IAuditService (Security & chronological timeline trace)
 │   │       └── TrustLab/                # ITrustLabService (Chaos simulator for live judge demos)
 │   │
-│   └── TrustFlow.Web/                   # ASP.NET Core Web API Host & Minimal Client Interface
+│   └── NCash.Web/                       # ASP.NET Core Web API Host & Modern Client Interface
 │       ├── Controllers/                 # REST API Controllers
 │       ├── Middleware/                  # GlobalExceptionMiddleware, CorrelationIdMiddleware
 │       ├── Extensions/                  # Dependency injection, Swagger, JWT Bearer, Rate Limiting
-│       └── wwwroot/                     # Minimalist live N-Cash test client
+│       └── wwwroot/                     # High-reliability N-Cash web application
 │
 └── tests/
-    └── TrustFlow.Tests/                 # Comprehensive xUnit automated test suite
+    └── NCash.Tests/                     # Comprehensive xUnit automated test suite
         ├── PaymentEngineTests.cs        # Atomicity, Overdraft prevention, Idempotency
         ├── AuthAndSecurityTests.cs      # User Registration, JWT, BCrypt, PIN, Anti-Enumeration
         ├── GroupCollectionTests.cs      # Group Collect Pools & Contribution tracking
@@ -112,33 +112,33 @@ When N-Cash boots, `DbInitializer` seeds:
 - PostgreSQL 14+ (Optional: automatically falls back to In-Memory DB if PostgreSQL is not running)
 
 ### Configuration
-Update `src/TrustFlow.Web/appsettings.json` or set environment variables:
+Update `src/NCash.Web/appsettings.json` or set environment variables:
 ```json
 {
   "ConnectionStrings": {
     "DefaultConnection": "Host=localhost;Port=5432;Database=ncash_db;Username=postgres;Password=postgres"
   },
   "Jwt": {
-    "Secret": "NCash_Super_Secure_Secret_Key_For_Hackathon_2026_Min_32_Chars!",
+    "Secret": "REPLACE_WITH_SECURE_RANDOM_SECRET_MIN_32_CHARS",
     "Issuer": "NCash",
     "Audience": "NCashUsers",
-    "ExpiryMinutes": 1440
+    "ExpiryMinutes": 60
   }
 }
 ```
 
 ### Running the API & Client
 ```powershell
-dotnet run --project src/TrustFlow.Web/TrustFlow.Web.csproj
+dotnet run --project src/NCash.Web/NCash.Web.csproj
 ```
 
 Open your browser:
-- **N-Cash Web Client**: `http://localhost:5000` (or `https://localhost:5001`)
-- **Swagger OpenAPI Docs**: `http://localhost:5000/swagger`
+- **N-Cash Web Client**: `http://localhost:5256`
+- **Swagger OpenAPI Docs (Dev mode)**: `http://localhost:5256/swagger`
 
 ### Running Automated xUnit Tests
 ```powershell
-dotnet test tests/TrustFlow.Tests/TrustFlow.Tests.csproj
+dotnet test tests/NCash.Tests/NCash.Tests.csproj
 ```
 
 ---

@@ -48,8 +48,8 @@ public class AuthAndSecurityTests
         var ledgerRepository = new LedgerRepository(_context);
         var transactionRepository = new TransactionRepository(_context);
 
-        // Seed Treasury
-        DbInitializer.InitializeAsync(_context, _passwordHasher).GetAwaiter().GetResult();
+        // Seed Treasury and Demo Users for test fixture
+        DbInitializer.InitializeAsync(_context, _passwordHasher, isDevelopment: true).GetAwaiter().GetResult();
 
         _authService = new AuthService(
             _context,

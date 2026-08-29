@@ -1,5 +1,5 @@
 /**
- * TrustFlow (N-Cash) — NITC CanteenPay Client Architecture
+ * N-Cash — Client Architecture & UI Controller
  * All API calls target the correct C# / ASP.NET Core endpoints.
  */
 
@@ -150,7 +150,7 @@ async function apiRequest(endpoint, method = 'GET', body = null, extraHeaders = 
         }
         return data;
     } catch (err) {
-        console.error(`[TrustFlow] ${method} ${endpoint}`, err);
+        console.error(`[N-Cash] ${method} ${endpoint}`, err);
         throw err;
     }
 }
