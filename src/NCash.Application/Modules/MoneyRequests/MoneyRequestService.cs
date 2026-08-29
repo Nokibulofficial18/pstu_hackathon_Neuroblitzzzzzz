@@ -10,10 +10,17 @@ using NCash.Domain.Enums;
 namespace NCash.Application.Modules.MoneyRequests;
 
 public record CreateMoneyRequestDto(
-    string PayerAccountNumber,
-    decimal Amount,
-    string? Note,
-    int ExpiryDays = 7);
+    string? PayerAccountNumber = null,
+    decimal Amount = 0m,
+    string? Note = null,
+    int ExpiryDays = 7,
+    string? PayerId = null)
+{
+    public string ResolvedPayer =>
+        !string.IsNullOrWhiteSpace(PayerAccountNumber)
+            ? PayerAccountNumber.Trim()
+            : (PayerId?.Trim() ?? string.Empty);
+}
 
 public record MoneyRequestResponseDto(
     Guid Id,
@@ -33,8 +40,12 @@ public record MoneyRequestResponseDto(
     DateTime CreatedAtUtc);
 
 public record PayMoneyRequestDto(
-    decimal? PaymentAmount,
-    string IdempotencyKey);
+    decimal? PaymentAmount = null,
+    string? IdempotencyKey = null,
+    decimal? Amount = null)
+{
+    public decimal? ResolvedAmount => PaymentAmount ?? Amount;
+}
 
 public interface IMoneyRequestService
 {
@@ -73,9 +84,13 @@ public class MoneyRequestService : IMoneyRequestService
         if (requesterAccount == null)
             throw new DomainException(ErrorCodes.AccountNotFound, "Requester account not found.");
 
-        var payerAccount = await _accountRepository.GetByAccountNumberAsync(dto.PayerAccountNumber.Trim(), cancellationToken);
+        var payerQuery = dto.ResolvedPayer;
+        if (string.IsNullOrWhiteSpace(payerQuery))
+            throw new DomainException(ErrorCodes.ValidationFailed, "Payer account number or username is required.");
+
+        var payerAccount = await _accountRepository.GetByIdentifierAsync(payerQuery, cancellationToken);
         if (payerAccount == null)
-            throw new DomainException(ErrorCodes.RecipientNotFound, $"Payer account '{dto.PayerAccountNumber}' not found.");
+            throw new DomainException(ErrorCodes.RecipientNotFound, $"Payer account '{payerQuery}' not found.");
 
         if (requesterAccount.Id == payerAccount.Id)
             throw new DomainException(ErrorCodes.SelfTransferNotAllowed, "Cannot request money from your own account.");
@@ -184,7 +199,7 @@ public class MoneyRequestService : IMoneyRequestService
             throw new DomainException(ErrorCodes.MoneyRequestExpired, "This money request has expired.");
         }
 
-        var amountToPay = dto.PaymentAmount ?? request.RemainingAmount;
+        var amountToPay = dto.ResolvedAmount ?? request.RemainingAmount;
         if (amountToPay <= 0 || amountToPay > request.RemainingAmount)
         {
             throw new DomainException(ErrorCodes.MoneyRequestInvalidAmount,
@@ -196,7 +211,7 @@ public class MoneyRequestService : IMoneyRequestService
             payerAccount.Id,
             request.RequesterAccountId,
             amountToPay,
-            dto.IdempotencyKey,
+            !string.IsNullOrWhiteSpace(dto.IdempotencyKey) ? dto.IdempotencyKey : $"REQ-PAY-{requestId:N}-{Guid.NewGuid():N}",
             TransactionType.MoneyRequestPayment,
             $"Payment for request #{request.Id.ToString()[..8]}. Note: {request.Note ?? "None"}",
             0m);

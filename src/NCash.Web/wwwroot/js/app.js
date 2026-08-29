@@ -113,7 +113,11 @@ async function apiRequest(endpoint, method = 'GET', body = null, extraHeaders = 
                 handleLogout();
                 throw new Error('Session expired. Please sign in again.');
             }
-            throw new Error(data.message || data.detail || data.title || 'Request failed.');
+            let errorMsg = data.message || data.detail;
+            if (!errorMsg && data.errors) {
+                errorMsg = Object.values(data.errors).flat().join(' ');
+            }
+            throw new Error(errorMsg || data.title || 'Request failed.');
         }
         return data;
     } catch (err) {
@@ -198,6 +202,10 @@ function showAppShell() {
         const name = currentUser.fullName || currentUser.username || 'User';
         document.getElementById('hdr-welcome').textContent = `Welcome ${name}`;
         document.getElementById('hdr-avatar').textContent   = name[0].toUpperCase();
+        if (currentUser.balance !== undefined && currentUser.balance !== null) {
+            const balEl = document.getElementById('dash-balance');
+            if (balEl) balEl.textContent = fmtBDT(currentUser.balance);
+        }
     }
 }
 
@@ -223,7 +231,8 @@ async function handleLogin(e) {
             id:            res.data.userId,
             username:      res.data.username,
             fullName:      res.data.fullName,
-            accountNumber: res.data.accountNumber
+            accountNumber: res.data.accountNumber,
+            balance:       res.data.balance ?? res.data.availableBalance ?? 0
         };
         showAppShell();
         navigateTo('dashboard');
@@ -255,7 +264,8 @@ async function handleRegister(e) {
             id:            res.data.userId,
             username:      res.data.username,
             fullName:      res.data.fullName,
-            accountNumber: res.data.accountNumber
+            accountNumber: res.data.accountNumber,
+            balance:       res.data.balance ?? res.data.availableBalance ?? 100000
         };
         showAppShell();
         navigateTo('dashboard');
@@ -288,8 +298,17 @@ async function loadDashboard() {
     try {
         // Wallet balance
         const wallet = await apiRequest('/wallet');
-        document.getElementById('dash-balance').textContent = fmtBDT(wallet.data.balance);
-    } catch { /* silently keep last value */ }
+        const balance = wallet.data.availableBalance ?? wallet.data.balance ?? currentUser?.balance ?? 0;
+        document.getElementById('dash-balance').textContent = fmtBDT(balance);
+        if (currentUser) {
+            currentUser.balance = balance;
+        }
+    } catch (err) {
+        console.error('Error loading wallet balance:', err);
+        if (currentUser?.balance !== undefined) {
+            document.getElementById('dash-balance').textContent = fmtBDT(currentUser.balance);
+        }
+    }
 
     // Pending incoming requests
     try {
@@ -384,8 +403,9 @@ function goStep(n) {
 // Quick select recipient from suggestion pills
 function selectRecipient(accOrUsername, displayText) {
     document.getElementById('send-recipient').value = accOrUsername;
-    sendState.recipientId      = accOrUsername;
-    sendState.recipientDisplay = displayText;
+    sendState.recipientId            = accOrUsername;
+    sendState.recipientAccountNumber = accOrUsername;
+    sendState.recipientDisplay       = displayText;
     document.getElementById('recipient-preview').textContent = `✓ ${displayText}`;
     clearTimeout(recipientLookupTimer);
 }
@@ -396,6 +416,7 @@ function lookupRecipient() {
     const q   = document.getElementById('send-recipient').value.trim();
     const pre = document.getElementById('recipient-preview');
     sendState.recipientId = null;
+    sendState.recipientAccountNumber = null;
     sendState.recipientDisplay = null;
     if (!q) { pre.textContent = ''; return; }
     pre.textContent = 'Searching...';
@@ -403,8 +424,9 @@ function lookupRecipient() {
         try {
             const res = await apiRequest(`/users/search?q=${encodeURIComponent(q)}`);
             const u   = res.data;
-            sendState.recipientId      = u.id || u.accountNumber || q;
-            sendState.recipientDisplay = `${u.fullName} (${u.accountNumber})`;
+            sendState.recipientId            = u.accountNumber || u.id || q;
+            sendState.recipientAccountNumber = u.accountNumber || q;
+            sendState.recipientDisplay       = `${u.fullName} (${u.accountNumber})`;
             pre.textContent = `✓ ${sendState.recipientDisplay}`;
             pre.style.color = 'var(--success)';
         } catch (err) {
@@ -421,7 +443,8 @@ async function updateRisk() {
 
     try {
         const res = await apiRequest('/transfers/precheck-risk', 'POST', {
-            recipientId: sendState.recipientId,
+            recipientId:           sendState.recipientAccountNumber || sendState.recipientId,
+            receiverAccountNumber: sendState.recipientAccountNumber || sendState.recipientId,
             amount,
             purpose: document.getElementById('send-purpose').value || ''
         });
@@ -458,15 +481,18 @@ async function executeSend() {
     // Step-up check
     const score    = sendState.riskAssessment?.totalScore || 0;
     const stepupEl = document.getElementById('stepup-box');
+    let confirmHighRisk = false;
     if (stepupEl.style.display !== 'none') {
         const acked = document.getElementById('high-risk-confirm').checked;
         if (!acked) {
             showAlert('send-alert', 'Please acknowledge the Risk Shield step-up warning to proceed.');
             return;
         }
+        confirmHighRisk = true;
     }
 
-    if (!sendState.recipientId) {
+    const recipientTarget = sendState.recipientAccountNumber || sendState.recipientId;
+    if (!recipientTarget) {
         showAlert('send-alert', 'Recipient not found or not resolved. Please go back and search again.');
         return;
     }
@@ -479,13 +505,15 @@ async function executeSend() {
 
     try {
         await apiRequest('/transfers', 'POST', {
-            recipientId: sendState.recipientId,
-            amount:      sendState.amount,
-            purpose:     sendState.purpose
+            recipientId:           recipientTarget,
+            receiverAccountNumber: recipientTarget,
+            amount:                sendState.amount,
+            purpose:               sendState.purpose,
+            confirmHighRisk:       confirmHighRisk
         }, { 'Idempotency-Key': sendState.idempotencyKey });
 
         document.getElementById('success-msg').textContent =
-            `${fmtBDT(sendState.amount)} sent to ${sendState.recipientDisplay || sendState.recipientId}. Key: ${sendState.idempotencyKey.slice(0, 8)}...`;
+            `${fmtBDT(sendState.amount)} sent to ${sendState.recipientDisplay || recipientTarget}. Key: ${sendState.idempotencyKey.slice(0, 8)}...`;
 
         openModal('modal-success');
     } catch (err) {
@@ -549,23 +577,40 @@ function renderRequestRow(r) {
 
 // Create request: POST /api/requests
 async function submitCreateRequest(e) {
+// Create request: POST /api/requests
+async function submitCreateRequest(e) {
     e.preventDefault();
-    const payer  = document.getElementById('req-payer').value.trim();
-    const amount = parseFloat(document.getElementById('req-amount').value);
-    const note   = document.getElementById('req-note').value.trim();
+    const payerInput = document.getElementById('req-payer').value.trim();
+    const amount     = parseFloat(document.getElementById('req-amount').value);
+    const note       = document.getElementById('req-note').value.trim();
 
-    // Lookup payer ID first
-    let payerId;
-    try {
-        const lu = await apiRequest(`/users/search?q=${encodeURIComponent(payer)}`);
-        payerId  = lu.data.id;
-    } catch {
-        alert('Payer not found. Please enter a valid username or account number.');
+    if (!payerInput) {
+        alert('Please enter a payer username or account number.');
+        return;
+    }
+    if (!amount || amount <= 0) {
+        alert('Please enter a valid amount.');
         return;
     }
 
+    // Lookup payer identifier
+    let payerAccNum = payerInput;
     try {
-        await apiRequest('/requests', 'POST', { payerId, amount, note });
+        const lu = await apiRequest(`/users/search?q=${encodeURIComponent(payerInput)}`);
+        if (lu.data) {
+            payerAccNum = lu.data.accountNumber || lu.data.id || payerInput;
+        }
+    } catch {
+        // Fallback to direct text value
+    }
+
+    try {
+        await apiRequest('/requests', 'POST', {
+            payerAccountNumber: payerAccNum,
+            payerId:            payerAccNum,
+            amount:             amount,
+            note:               note
+        });
         closeModal('modal-create-req');
         document.getElementById('req-payer').value  = '';
         document.getElementById('req-amount').value = '';
@@ -597,7 +642,11 @@ async function submitPayRequest(e) {
     const endpoint  = isPartial ? `/requests/${id}/partial-pay` : `/requests/${id}/accept`;
 
     try {
-        await apiRequest(endpoint, 'POST', { amount, idempotencyKey: idKey }, { 'Idempotency-Key': idKey });
+        await apiRequest(endpoint, 'POST', {
+            amount:         amount,
+            paymentAmount:  amount,
+            idempotencyKey: idKey
+        }, { 'Idempotency-Key': idKey });
         closeModal('modal-pay-req');
         loadRequests();
         loadDashboard();
@@ -854,6 +903,9 @@ async function loadProfile() {
         ]);
         const w = walletRes.data;
         const p = profileRes.data || currentUser;
+        const balance = w.availableBalance ?? w.balance ?? p.balance ?? 0;
+        const sent = w.totalSent ?? w.totalDebitedAmount ?? 0;
+        const received = w.totalReceived ?? w.totalCreditedAmount ?? 0;
         el.innerHTML = `
             <div style="text-align:center;padding-bottom:20px;border-bottom:1px solid var(--border-subtle);margin-bottom:20px;">
                 <div class="profile-pix-top-banner" style="width:68px;height:68px;font-size:28px;margin:0 auto 10px;">
@@ -864,9 +916,9 @@ async function loadProfile() {
             </div>
             <div class="review-box">
                 <div class="review-row"><span class="review-key">Account Number</span><span class="mono-id">${p.accountNumber || w.accountNumber || '—'}</span></div>
-                <div class="review-row"><span class="review-key">Balance</span><span class="review-val" style="color:var(--primary);font-size:18px;font-weight:700;">${fmtBDT(w.balance)}</span></div>
-                <div class="review-row"><span class="review-key">Total Sent</span><span class="amt-out">${fmtBDT(w.totalDebitedAmount || 0)}</span></div>
-                <div class="review-row"><span class="review-key">Total Received</span><span class="amt-in">${fmtBDT(w.totalCreditedAmount || 0)}</span></div>
+                <div class="review-row"><span class="review-key">Balance</span><span class="review-val" style="color:var(--primary);font-size:18px;font-weight:700;">${fmtBDT(balance)}</span></div>
+                <div class="review-row"><span class="review-key">Total Sent</span><span class="amt-out">${fmtBDT(sent)}</span></div>
+                <div class="review-row"><span class="review-key">Total Received</span><span class="amt-in">${fmtBDT(received)}</span></div>
                 <div class="review-row"><span class="review-key">Protection Status</span><span class="badge badge-success">🛡️ Zero-Variance Ledger Active</span></div>
             </div>
             <div class="flex-end"><button class="btn btn-danger" onclick="handleLogout()">Sign Out</button></div>`;

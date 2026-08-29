@@ -15,7 +15,12 @@ public record WalletSummaryDto(
     decimal TotalReceived,
     int TotalTransactionsCount,
     int PendingRequestsCount,
-    DateTime LastUpdatedUtc);
+    DateTime LastUpdatedUtc)
+{
+    public decimal Balance => AvailableBalance;
+    public decimal TotalDebitedAmount => TotalSent;
+    public decimal TotalCreditedAmount => TotalReceived;
+}
 
 public interface IWalletService
 {

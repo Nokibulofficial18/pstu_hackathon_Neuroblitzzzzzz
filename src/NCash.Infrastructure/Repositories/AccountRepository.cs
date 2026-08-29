@@ -35,6 +35,38 @@ public class AccountRepository : IAccountRepository
             .FirstOrDefaultAsync(a => a.AccountNumber == accountNumber, cancellationToken);
     }
 
+    public async Task<Account?> GetByIdentifierAsync(string identifier, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(identifier))
+            return null;
+
+        var clean = identifier.Trim();
+
+        // 1. Match by AccountNumber
+        var account = await _context.Accounts
+            .Include(a => a.User)
+            .FirstOrDefaultAsync(a => a.AccountNumber.ToLower() == clean.ToLower(), cancellationToken);
+        if (account != null) return account;
+
+        // 2. Match by GUID (AccountId or UserId)
+        if (Guid.TryParse(clean, out var guidId))
+        {
+            account = await _context.Accounts
+                .Include(a => a.User)
+                .FirstOrDefaultAsync(a => a.Id == guidId || a.UserId == guidId, cancellationToken);
+            if (account != null) return account;
+        }
+
+        // 3. Match by Username, Email, Phone
+        var lower = clean.ToLowerInvariant();
+        return await _context.Accounts
+            .Include(a => a.User)
+            .FirstOrDefaultAsync(a =>
+                a.User.Username.ToLower() == lower ||
+                a.User.Email.ToLower() == lower ||
+                a.User.PhoneNumber == clean, cancellationToken);
+    }
+
     public async Task<Account?> GetAccountForUpdateAsync(Guid accountId, CancellationToken cancellationToken = default)
     {
         if (_context.Database.IsNpgsql())

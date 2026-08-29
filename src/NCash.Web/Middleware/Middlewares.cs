@@ -31,8 +31,10 @@ public class GlobalExceptionHandlerMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled server exception during request {Path}", context.Request.Path);
-            await HandleExceptionAsync(context, (int)HttpStatusCode.InternalServerError, "INTERNAL_SERVER_ERROR", "An unexpected error occurred. Financial operations have been rolled back.");
+            _logger.LogError(ex, "Unhandled server exception during request {Path}: {Message}", context.Request.Path, ex.Message);
+            var isDev = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+            var detail = isDev ? $"Internal error: {ex.Message}" : "An unexpected error occurred. Financial operations have been rolled back.";
+            await HandleExceptionAsync(context, (int)HttpStatusCode.InternalServerError, "INTERNAL_SERVER_ERROR", detail);
         }
     }
 

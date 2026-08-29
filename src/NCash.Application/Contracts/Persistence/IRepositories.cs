@@ -7,6 +7,7 @@ public interface IAccountRepository
     Task<Account?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Account?> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<Account?> GetByAccountNumberAsync(string accountNumber, CancellationToken cancellationToken = default);
+    Task<Account?> GetByIdentifierAsync(string identifier, CancellationToken cancellationToken = default);
     Task<(Account? Sender, Account? Receiver)> GetAccountsForUpdateAsync(Guid senderId, Guid receiverId, CancellationToken cancellationToken = default);
     Task<Account?> GetAccountForUpdateAsync(Guid accountId, CancellationToken cancellationToken = default);
     Task AddAsync(Account account, CancellationToken cancellationToken = default);

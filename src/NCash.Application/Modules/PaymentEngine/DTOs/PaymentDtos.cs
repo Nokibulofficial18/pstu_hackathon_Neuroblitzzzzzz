@@ -3,10 +3,17 @@ using NCash.Application.Modules.RiskShield.DTOs;
 namespace NCash.Application.Modules.PaymentEngine.DTOs;
 
 public record InitiateTransferDto(
-    string ReceiverAccountNumber,
-    decimal Amount,
-    string? Purpose,
-    bool ConfirmHighRisk = false);
+    string? ReceiverAccountNumber = null,
+    decimal Amount = 0m,
+    string? Purpose = null,
+    bool ConfirmHighRisk = false,
+    string? RecipientId = null)
+{
+    public string ResolvedRecipient =>
+        !string.IsNullOrWhiteSpace(ReceiverAccountNumber)
+            ? ReceiverAccountNumber.Trim()
+            : (RecipientId?.Trim() ?? string.Empty);
+}
 
 public record ExecuteTransferCommand(
     Guid? SenderAccountId,

@@ -65,9 +65,13 @@ public class TransferService : ITransferService
         if (senderAccount == null || senderAccount.UserId != senderUserId)
             throw new DomainException(ErrorCodes.AccountNotFound, "Authenticated caller's wallet account does not exist.", 404);
 
-        var receiverAccount = await _accountRepository.GetByAccountNumberAsync(request.ReceiverAccountNumber.Trim(), cancellationToken);
+        var recipientQuery = request.ResolvedRecipient;
+        if (string.IsNullOrWhiteSpace(recipientQuery))
+            throw new DomainException(ErrorCodes.ValidationFailed, "Recipient account number or username is required.");
+
+        var receiverAccount = await _accountRepository.GetByIdentifierAsync(recipientQuery, cancellationToken);
         if (receiverAccount == null)
-            throw new DomainException(ErrorCodes.RecipientNotFound, $"Recipient account '{request.ReceiverAccountNumber}' does not exist.", 404);
+            throw new DomainException(ErrorCodes.RecipientNotFound, $"Recipient account '{recipientQuery}' does not exist.", 404);
 
         if (senderAccount.Id == receiverAccount.Id)
             throw new DomainException(ErrorCodes.SelfTransferNotAllowed, "You cannot transfer funds to your own account.");
@@ -87,9 +91,13 @@ public class TransferService : ITransferService
             throw new DomainException(ErrorCodes.AccountNotFound, "Authenticated caller's wallet account does not exist.", 404);
 
         // Step 3: Validate recipient exists
-        var receiverAccount = await _accountRepository.GetByAccountNumberAsync(request.ReceiverAccountNumber.Trim(), cancellationToken);
+        var recipientQuery = request.ResolvedRecipient;
+        if (string.IsNullOrWhiteSpace(recipientQuery))
+            throw new DomainException(ErrorCodes.ValidationFailed, "Recipient account number or username is required.");
+
+        var receiverAccount = await _accountRepository.GetByIdentifierAsync(recipientQuery, cancellationToken);
         if (receiverAccount == null)
-            throw new DomainException(ErrorCodes.RecipientNotFound, $"Recipient account '{request.ReceiverAccountNumber}' does not exist.", 404);
+            throw new DomainException(ErrorCodes.RecipientNotFound, $"Recipient account '{recipientQuery}' does not exist.", 404);
 
         // Step 4: Reject self-transfer
         if (senderAccount.Id == receiverAccount.Id)
